@@ -1,10 +1,14 @@
-{-# LANGUAGE OverloadedStrings #-}
-module Trigger (setupTrigger) where
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
+module Trigger (waitGetBestBlock, setupTrigger) where
 
 import Blockchain.Data.DataDefs
 import Blockchain.Database.MerklePatricia
 import Control.Monad
-import Data.ByteString
+import Control.Monad.Logger
+import qualified Data.ByteString.Char8 as BC
+import Data.Int
+import Database.Esqueleto hiding (Connection)
+import Database.Persist.Postgresql (withPostgresqlConn, runSqlConn)
 import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.Notification
 
@@ -13,19 +17,28 @@ import Database.PostgreSQL.Simple.Notification
 waitGetBestBlock :: Connection -> IO Block
 waitGetBestBlock conn = do
   Notification _ notifChannel notifData <- getNotification conn
-  guard $ notifChannel == triggerName
-  let (stateRoot, _) = read $ unpack notifData
+  guard $ notifChannel == BC.pack triggerName
+  let (stateRoot, _ :: Integer) = read $ BC.unpack notifData
   queryBestBlock conn stateRoot  
 
 setupTrigger :: Connection -> IO ()
-setupTrigger conn = withTransaction conn $ sequence_ [
+setupTrigger conn = withTransaction conn $ sequence_ $ map ($ conn) [
   clearTrigger, createTriggerFunction, createTrigger, listenTrigger
   ]
 
 -- Internal
 
 queryBestBlock :: Connection -> SHAPtr -> IO Block
-queryBestBlock conn stateRoot = -- What do I do here?
+queryBestBlock conn stateRoot =
+  let connStr = postgreSQLConnectionString defaultConnectInfo
+  in runNoLoggingT $ withPostgresqlConn connStr $ runSqlConn $ do
+     blocks <-
+       select $
+       from $ \(b `InnerJoin` bdr) -> do
+         on (b ^. BlockId ==. bdr ^. BlockDataRefBlockId &&.
+             bdr ^. BlockDataRefStateRoot ==. val stateRoot)
+         return b
+     return $ entityVal $ head blocks
 
 clearTrigger :: Connection -> IO Int64
 clearTrigger conn = execute conn "drop trigger if exists ? on ?" (triggerName, bestBlockDB)
@@ -33,11 +46,11 @@ clearTrigger conn = execute conn "drop trigger if exists ? on ?" (triggerName, b
 createTriggerFunction :: Connection -> IO Int64
 createTriggerFunction conn =
   execute conn
-  ("create or replace function ?() returns trigger language plpgsql as " ++
-   "$$begin" ++
-   " perform pg_notify(?, new.value)" ++
-   " return null;" ++
-   "end$$")
+  ("create or replace function ?() returns trigger language plpgsql as \
+   \$$begin \
+   \ perform pg_notify(?, new.value) \
+   \ return null; \
+   \end$$")
   (triggerName, bestBlockNotify)
 
 createTrigger :: Connection -> IO Int64
@@ -51,8 +64,8 @@ listenTrigger conn = execute conn "listen ?" (Only triggerName)
 
 -- Global constant names
 
-triggerName = "newBestNotify"
-bestBlockDB = "extra"
-bestBlockKey = "bestBlockNumber"
-bestBlockKeyCol = "the_key"
-bestBlockNotify = "bestBlockNotify"
+triggerName = "newBestNotify" :: String
+bestBlockDB = "extra" :: String
+bestBlockKey = "bestBlockNumber" :: String
+bestBlockKeyCol = "the_key" :: String
+bestBlockNotify = "bestBlockNotify" :: String

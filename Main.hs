@@ -1,0 +1,3 @@
+import Trigger
+
+main = return ()
