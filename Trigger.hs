@@ -14,7 +14,7 @@ import Database.PostgreSQL.Simple.Notification
 
 -- Exported
 
-waitGetBestBlock :: Connection -> IO Block
+waitGetBestBlock :: Connection -> IO (Entity Block)
 waitGetBestBlock conn = do
   Notification _ notifChannel notifData <- getNotification conn
   guard $ notifChannel == BC.pack triggerName
@@ -28,17 +28,17 @@ setupTrigger conn = withTransaction conn $ sequence_ $ map ($ conn) [
 
 -- Internal
 
-queryBestBlock :: Connection -> SHAPtr -> IO Block
+queryBestBlock :: Connection -> SHAPtr -> IO (Entity Block)
 queryBestBlock conn stateRoot =
   let connStr = postgreSQLConnectionString defaultConnectInfo
   in runNoLoggingT $ withPostgresqlConn connStr $ runSqlConn $ do
-     blocks <-
-       select $
-       from $ \(b `InnerJoin` bdr) -> do
-         on (b ^. BlockId ==. bdr ^. BlockDataRefBlockId &&.
-             bdr ^. BlockDataRefStateRoot ==. val stateRoot)
-         return b
-     return $ entityVal $ head blocks
+    blocks <-
+      select $
+      from $ \(b `InnerJoin` bdr) -> do
+        on (b ^. BlockId ==. bdr ^. BlockDataRefBlockId &&.
+            bdr ^. BlockDataRefStateRoot ==. val stateRoot)
+        return b
+    return $ head blocks
 
 clearTrigger :: Connection -> IO Int64
 clearTrigger conn = execute conn "drop trigger if exists ? on ?" (triggerName, bestBlockDB)
