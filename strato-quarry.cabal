@@ -33,6 +33,9 @@ executable strato-quarry
                        ethereum-vm,
                        containers,
                        time,
-                       haskoin
+                       haskoin,
+                       strato-conf,
+                       resourcet,
+                       transformers
   -- hs-source-dirs:      
   default-language:    Haskell2010

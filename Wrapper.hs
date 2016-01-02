@@ -38,7 +38,7 @@ makeBlock conn = do
     blockReceiptTransactions = txs,
     blockBlockData = BlockData {
       blockDataParentHash = blockHash parent,
-      blockDataUnclesHash = hash . rlpSerialize . rlpEncode $ uncles,
+      blockDataUnclesHash = hash . rlpSerialize . RLPArray $ map rlpEncode uncles,
       blockDataCoinbase = prvKey2Address ourPrvKey,
       blockDataStateRoot = SHAPtr "",
       blockDataTransactionsRoot = emptyTriePtr, -- FIXME
@@ -51,9 +51,9 @@ makeBlock conn = do
         (blockDataDifficulty parentData)
         (blockDataTimestamp parentData)
         time,
-      blockDataNumber = blockDataNumber parent + 1,
+      blockDataNumber = blockDataNumber (blockBlockData parent) + 1,
       blockDataGasLimit =
-        let g = blockDataGasLimit parent
+        let g = blockDataGasLimit $ blockBlockData parent
             (q,d) = g `quotRem` 1024
         in g + q - (if d == 0 then 1 else 0),
       blockDataGasUsed = 0,
@@ -64,7 +64,7 @@ makeBlock conn = do
       }
     }
 
-getSiblings :: Connection -> Block -> IO [Block]
+getSiblings :: Connection -> Block -> IO [BlockData]
 getSiblings conn Block{blockBlockData = BlockData{blockDataParentHash = pHash}} =
   let connStr = postgreSQLConnectionString defaultConnectInfo
   in runNoLoggingT $ withPostgresqlConn connStr $ runSqlConn $ do
@@ -74,19 +74,21 @@ getSiblings conn Block{blockBlockData = BlockData{blockDataParentHash = pHash}} 
         on (blockDR ^. BlockDataRefBlockId ==. block ^. BlockId &&.
             blockDR ^. BlockDataRefParentHash ==. val pHash)
         return block
-    return $ map entityVal blocks
+    return $ map (blockBlockData . entityVal) blocks
 
 getGreenTXs :: Connection -> Entity Block -> IO [Transaction]
 getGreenTXs conn blockE = do
   let connStr = postgreSQLConnectionString defaultConnectInfo
   runNoLoggingT $ withPostgresqlConn connStr $ runSqlConn $ do
-    [RawTransaction{rawTransactionTimestamp = earliest}] <- do
-      select $
+    earliest:_ <- do
+      txs <-
+        select $
         from $ \rawTX -> do
-          on (rawTX ^. BlockId ==. val $ entityVal blockE )
+          on (rawTX ^. RawTransactionBlockId ==. val (entityKey blockE))
           orderBy [asc $ rawTX ^. RawTransactionTimestamp]
           limit 1
-          return $ entityVal rawTX
+          return rawTX
+      return $ map (rawTransactionTimestamp . entityVal) txs
     let startTime = addUTCTime (negate timeRadius) earliest
     laterBlockEs <-
       select $
@@ -99,23 +101,23 @@ getGreenTXs conn blockE = do
           return (blockHash block, recentBlockE)
         recentChain =
           catMaybes $ List.takeWhile isJust $
-          Just (entityKey blockE) :
+          Just blockE :
           map (
-            fmap entityKey .
             flip Map.lookup recentBlockEMap .
             blockDataParentHash .
             blockBlockData .
             entityVal
             )
           recentChain
-    rawGreenTXs <- do
+        recentChainIds = map entityKey recentChain
+    rawtxs <-
       select $
-        from $ \rawTX -> do
-          on $ (rawTX ^. RawTransactionTimestamp >. val startTime) &&.
-            (foldr (&&.) $
-             map (\id -> rawTX ^. RawTransactionBlockId !=. val id) recentChain)
-          return $ entityVal rawTX
-    return $ map rawTX2TX rawGreenTXs
+      from $ \rawTX -> do
+        on $ (rawTX ^. RawTransactionTimestamp >. val startTime) &&.
+          (foldr1 (&&.) $
+           map (\id -> rawTX ^. RawTransactionBlockId !=. val id) recentChainIds)
+        return rawTX
+    return $ map (rawTX2TX . entityVal) rawtxs
 
 ourPrvKey = fromJust $ makePrvKey
             0x0000000000000000000000000000000000000000000000000000000000000000
