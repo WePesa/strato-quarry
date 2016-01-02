@@ -47,9 +47,9 @@ createTriggerFunction :: Connection -> IO Int64
 createTriggerFunction conn =
   execute conn
   ("create or replace function ?() returns trigger language plpgsql as \
-   \$$begin \
-   \ perform pg_notify('?', new.value); \
-   \ return null; \
+   \$$begin\n\
+   \ perform pg_notify('?', new.value);\n\
+   \ return null;\n\
    \end$$")
   (triggerName, bestBlockNotify)
 
