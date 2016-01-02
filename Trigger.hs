@@ -60,12 +60,12 @@ createTrigger conn =
   (triggerName, bestBlockDB, bestBlockKeyCol, bestBlockKey, triggerName)
 
 listenTrigger :: Connection -> IO Int64
-listenTrigger conn = execute conn "listen ?" (Only triggerName)
+listenTrigger conn = execute conn "listen ?" (Only bestBlockNotify)
 
 -- Global constant names
 
-triggerName = "newBestNotify" :: String
+triggerName = "new_best_notify" :: String
 bestBlockDB = "extra" :: String
 bestBlockKey = "bestBlockNumber" :: String
 bestBlockKeyCol = "the_key" :: String
-bestBlockNotify = "bestBlockNotify" :: String
+bestBlockNotify = "best_block_notify" :: String
