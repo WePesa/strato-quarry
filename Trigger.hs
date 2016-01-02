@@ -48,7 +48,7 @@ createTriggerFunction conn =
   execute conn
   ("create or replace function ?() returns trigger language plpgsql as \
    \$$begin \
-   \ perform pg_notify(?, new.value) \
+   \ perform pg_notify('?', new.value) \
    \ return null; \
    \end$$")
   (triggerName, bestBlockNotify)
