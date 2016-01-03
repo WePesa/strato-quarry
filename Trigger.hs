@@ -59,9 +59,8 @@ createTriggerFunction conn =
 createTrigger :: Connection -> IO Int64
 createTrigger conn =
   doQuery conn $
-  "create trigger " ++ triggerName ++
-  " after insert on " ++ bestBlockDB ++
-  " for each row when new." ++ bestBlockKeyCol ++ " = " ++ bestBlockKey ++
+  "create trigger " ++ triggerName ++ " after insert on " ++ bestBlockDB ++
+  " for each row when (new." ++ bestBlockKeyCol ++ " = " ++ bestBlockKey ++ ") " ++
   " execute procedure " ++ triggerName ++ "()"
 
 listenTrigger :: Connection -> IO Int64
