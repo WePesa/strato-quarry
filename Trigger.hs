@@ -6,11 +6,13 @@ import Blockchain.Database.MerklePatricia
 import Control.Monad
 import Control.Monad.Logger
 import qualified Data.ByteString.Char8 as BC
+import Data.ByteString.Char8 (pack)
 import Data.Int
 import Database.Esqueleto hiding (Connection)
 import Database.Persist.Postgresql (withPostgresqlConn, runSqlConn)
-import Database.PostgreSQL.Simple
+import Database.PostgreSQL.Simple 
 import Database.PostgreSQL.Simple.Notification
+import Database.PostgreSQL.Simple.Types
 
 -- Exported
 
@@ -41,27 +43,32 @@ queryBestBlock conn stateRoot =
     return $ head blocks
 
 clearTrigger :: Connection -> IO Int64
-clearTrigger conn = execute conn "drop trigger if exists ? on ?" (triggerName, bestBlockDB)
+clearTrigger conn =
+  doQuery conn $ "drop trigger if exists " ++ triggerName ++ " on " ++ bestBlockDB
 
 createTriggerFunction :: Connection -> IO Int64
 createTriggerFunction conn =
-  execute conn
-  ("create or replace function ?() returns trigger language plpgsql as $$\
-   \begin\n\
-   \ perform pg_notify('?', new.value);\n\
-   \ return null;\n\
-   \end\n\
-   \$$")
-  (triggerName, bestBlockNotify)
+  doQuery conn $
+  "create or replace function " ++ triggerName ++ "() \
+  \returns trigger language plpgsql as \
+  \$$begin \
+  \ perform pg_notify('" ++ bestBlockNotify ++ "', new.value); \
+  \ return null; \
+  \end$$"
 
 createTrigger :: Connection -> IO Int64
 createTrigger conn =
-  execute conn
-  "create trigger ? after insert on ? for each row when new.? = ? execute procedure ?()"
-  (triggerName, bestBlockDB, bestBlockKeyCol, bestBlockKey, triggerName)
+  doQuery conn $
+  "create trigger " ++ triggerName ++
+  " after insert on " ++ bestBlockDB ++
+  " for each row when new." ++ bestBlockKeyCol ++ " = " ++ bestBlockKey ++
+  " execute procedure " ++ triggerName ++ "()"
 
 listenTrigger :: Connection -> IO Int64
-listenTrigger conn = execute conn "listen ?" (Only bestBlockNotify)
+listenTrigger conn = doQuery conn $ "listen " ++ bestBlockNotify
+
+doQuery :: Connection -> String -> IO Int64
+doQuery conn s = execute conn (Query . pack $ s) ()
 
 -- Global constant names
 
