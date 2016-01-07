@@ -4,10 +4,16 @@ module Trigger where
 
 import Blockchain.Data.DataDefs
 import Blockchain.Data.BlockDB
+import Blockchain.Data.Transaction
 import Blockchain.Database.MerklePatricia
 import Control.Monad
-import Data.ByteString.Char8 (unpack)
+import Control.Monad.Logger
+import Data.ByteString.Char8 (pack, unpack)
+import Data.Maybe
+import Data.String
 import Database.Esqueleto
+import Database.Persist.Class
+import Database.PostgreSQL.Simple.Notification
 
 import SQLFunctions
 import SQLMonad
@@ -16,7 +22,7 @@ notifyName = "quarry"
 extraKey = "bestBlockNumber"
 
 setupTriggers :: ConnT ()
-setupTriggers conn = asSimpleTransaction $ mapM_ executeSimple [
+setupTriggers = asSimpleTransaction [
   clearTrigger txTrigger txTable,
   clearTrigger bestTrigger bestTable,
   createTriggerFunction txFunc notifyName txData,
@@ -45,8 +51,7 @@ data NotifyPayload =
 
 waitNotifyData :: ConnT NotifyData
 waitNotifyData = do
-  Notification _ notifChannel notifData <- waitNotification
-  guard $ notifChannel == notifyName
+  Notification _ _ notifData <- waitNotification
   case read $ unpack notifData of
     BB (stateRoot, _) -> NewBestBlock <$> blockFromStateRoot stateRoot
     TX rawTX -> return $ NewTransaction $ rawTX2TX rawTX
@@ -63,8 +68,6 @@ blockFromStateRoot stateRoot = asPersistTransaction $ do
 
 getBestBlock :: ConnT (Entity Block)
 getBestBlock = do
-  Extra { value = stateRoot } <- asPersistTransaction $
-    select $ from $ \ex -> do
-      ex ^. ExtraKey ==. val extraKey
-      return ex
-  blockFromStateRoot stateRoot
+  Just (Entity {entityVal = Extra {extraValue = stateRoot}}) <-
+    asPersistTransaction $ getBy (TheKey extraKey)
+  blockFromStateRoot $ read stateRoot

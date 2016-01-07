@@ -1,15 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Wrapper (makeBlock) where
+module Wrapper (makeBlock, constructBlock) where
 
 import Blockchain.Data.Address
 import Blockchain.Data.BlockDB
 import Blockchain.Data.DataDefs
 import Blockchain.Data.RLP
 import Blockchain.Data.Transaction
-import Blockchain.Database.MerklePatricia
+import Blockchain.Database.MerklePatricia hiding (Key)
 import Blockchain.SHA
 import Blockchain.Verifier
 
+import Control.Monad.IO.Class
 import Control.Monad.Logger
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.State
@@ -19,21 +20,22 @@ import qualified Data.Map as Map
 import Data.Maybe
 import Data.Time.Clock
 
-import Database.Esqueleto hiding (Connection)
+import Database.Esqueleto hiding (Connection, get)
 import Database.Persist.Postgresql (withPostgresqlConn, runSqlConn)
 import Database.PostgreSQL.Simple
 
 import Network.Haskoin.Internals (makePrvKey, PrvKey)
 
 import Trigger
+import SQLMonad
 
 makeBlock :: StateT Block ConnT ()
 makeBlock = do
-  notifyData <- waitNotifyData
+  notifyData <- lift waitNotifyData
   case notifyData of
-    NewBestBlock blockE@(Entity blockId _) -> do
+    NewBestBlock blockE -> do
       newBlock <- lift $ do
-        txs <- getGreenTXs blockId
+        txs <- getGreenTXs blockE
         constructBlock blockE txs
       put newBlock
     NewTransaction tx -> do
@@ -94,7 +96,7 @@ getSiblings Block{blockBlockData = BlockData{blockDataParentHash = pHash}} =
     return $ map (blockBlockData . entityVal) blocks
 
 getGreenTXs :: Entity Block -> ConnT [Transaction]
-getGreenTXs conn blockE =
+getGreenTXs blockE =
   asPersistTransaction $ do
     earliest:_ <- do
       txs <-

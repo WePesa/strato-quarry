@@ -2,16 +2,18 @@
 
 import Blockchain.EthConf
 import Control.Monad
+import Control.Monad.Trans.State
 import Database.PostgreSQL.Simple
 
 import SQLMonad
+import Trigger
 import Wrapper
 
 main =
   withConnInfo
   ConnectInfo {
     connectHost = "localhost",
-    connectPort = show $ port $ sqlConfig ethConf,
+    connectPort = fromIntegral $ port $ sqlConfig ethConf,
     connectUser = "postgres",
     connectPassword = "api",
     connectDatabase = "eth"
@@ -20,4 +22,4 @@ main =
     best <- getBestBlock
     seedBlock <- constructBlock best []
     setupTriggers
-    runStateT seedBlock $ forever makeBlock
+    evalStateT (forever makeBlock) seedBlock
