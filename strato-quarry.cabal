@@ -30,6 +30,8 @@ executable strato-quarry
                        resourcet,
                        haskoin,
                        monad-logger,
-                       transformers
+                       transformers,
+                       ethereum-vm,
+                       hflags
   -- hs-source-dirs:      
   default-language:    Haskell2010

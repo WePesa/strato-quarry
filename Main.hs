@@ -1,22 +1,29 @@
-{-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings, FlexibleInstances, TemplateHaskell #-}
 
 import Blockchain.DBM
 import Blockchain.DB.SQLDB
 import Blockchain.Data.Address
 import Blockchain.Data.DataDefs
 import Blockchain.Data.BlockDB
+import Blockchain.DB.DetailsDB
+import Blockchain.Verifier
+import Blockchain.VMOptions
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.Monad.Logger
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Resource
 import Data.Int
 import Data.Maybe
+import Data.Time.Clock
 import Database.Persist.Postgresql hiding (Connection)
 import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.Notification
 import Network.Haskoin.Internals (makePrvKey)
 import Data.ByteString.Char8 (unpack, pack)
+
+import HFlags
 
 import qualified Blockchain.Database.MerklePatricia as MP
 import qualified Data.ByteString as B
@@ -41,6 +48,7 @@ instance HasSQLDB (ReaderT ConnectionPool (NoLoggingT (ResourceT IO))) where
 
 main::IO ()
 main = do
+  _ <- $initHFlags "Strato-quarry"
   conn <- connectPostgreSQL "host=localhost dbname=eth user=postgres password=api port=5432"
   let sConn = runNoLoggingT $ do
         f <- askLogFunc
@@ -51,12 +59,14 @@ main = do
     Notification _ notifChannel notifData <- getNotification conn
     putStr $ "Trigger on " ++ (unpack notifChannel) ++ " data is: " ++ (unpack notifData) ++ "\n"
     ts <- getCurrentTime
-    runResourceT $ runNoLoggingT $ withSqlPool (const sConn) 1 $ \sPool -> flip runReaderT sPool $
+    runResourceT $ runNoLoggingT $ withSqlPool (const sConn) 1 $ \sPool -> flip runReaderT sPool $ do
+      h <- getBestBlockHash
+      b <- getBestBlock
       putBlocks [
         Block{
            blockBlockData=
               BlockData {
-                blockDataParentHash= SHA 0,
+                blockDataParentHash= h,
                 blockDataUnclesHash=hash$ B.pack [0xc0],
                 blockDataCoinbase=
                   prvKey2Address $ fromJust $ makePrvKey
@@ -65,7 +75,12 @@ main = do
                 blockDataTransactionsRoot = MP.emptyTriePtr,
                 blockDataReceiptsRoot = MP.emptyTriePtr,
                 blockDataLogBloom = B.pack [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],         
-                blockDataDifficulty = 1000000000000,
+                blockDataDifficulty =
+                  nextDifficulty
+                  (blockDataNumber $ blockBlockData b)
+                  (blockDataDifficulty $ blockBlockData b)
+                  (blockDataTimestamp $ blockBlockData b)
+                  ts,
                 blockDataNumber = 1,
                 blockDataGasLimit = 3141592,
                 blockDataGasUsed = 0,
