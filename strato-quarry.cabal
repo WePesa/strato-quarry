@@ -17,16 +17,19 @@ cabal-version:       >=1.10
 
 executable strato-quarry
   main-is:             Main.hs
-  other-modules:       Trigger
+  other-modules:       
   other-extensions:    OverloadedStrings
   build-depends:       base >=4.8 && <4.9,
                        bytestring,
-                       esqueleto,
-                       monad-logger,
-                       persistent,
                        persistent-postgresql,
                        postgresql-simple,
                        blockapps-data,
-                       merkle-patricia-db
+                       merkle-patricia-db,
+                       time,
+                       blockapps-util,
+                       resourcet,
+                       haskoin,
+                       monad-logger,
+                       transformers
   -- hs-source-dirs:      
   default-language:    Haskell2010
