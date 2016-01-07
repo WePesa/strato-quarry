@@ -11,6 +11,8 @@ import Blockchain.SHA
 import Blockchain.Verifier
 
 import Control.Monad.Logger
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.State
 
 import qualified Data.List as List
 import qualified Data.Map as Map
@@ -25,14 +27,30 @@ import Network.Haskoin.Internals (makePrvKey, PrvKey)
 
 import Trigger
 
-makeBlock :: Connection -> IO Block
-makeBlock conn = do
-  parentE <- waitGetBestBlock conn
+makeBlock :: StateT Block ConnT ()
+makeBlock = do
+  notifyData <- waitNotifyData
+  case notifyData of
+    NewBestBlock blockE@(Entity blockId _) -> do
+      newBlock <- lift $ do
+        txs <- getGreenTXs blockId
+        constructBlock blockE txs
+      put newBlock
+    NewTransaction tx -> do
+      oldBlock <- get
+      let oldTXs = blockReceiptTransactions oldBlock
+          newTXs = oldTXs ++ [tx]
+      put $ oldBlock { blockReceiptTransactions = newTXs }
+  madeBlock <- get
+  _ <- lift $ asPersistTransaction $ putBlock madeBlock $ blockHash madeBlock
+  return ()
+
+constructBlock :: Entity Block -> [Transaction] -> ConnT Block
+constructBlock parentE txs = do
   let parent = entityVal parentE
       parentData = blockBlockData parent
-  uncles <- getSiblings conn parent
-  txs <- getGreenTXs conn parentE
-  time <- getCurrentTime
+  uncles <- getSiblings parent
+  time <- liftIO getCurrentTime
   return $ Block {
     blockBlockUncles = uncles,
     blockReceiptTransactions = txs,
@@ -41,7 +59,7 @@ makeBlock conn = do
       blockDataUnclesHash = hash . rlpSerialize . RLPArray $ map rlpEncode uncles,
       blockDataCoinbase = prvKey2Address ourPrvKey,
       blockDataStateRoot = SHAPtr "",
-      blockDataTransactionsRoot = emptyTriePtr, -- FIXME
+      blockDataTransactionsRoot = emptyTriePtr,
       blockDataReceiptsRoot = emptyTriePtr,
       blockDataLogBloom =
         "0000000000000000000000000000000000000000000000000000000000000000",
@@ -64,10 +82,9 @@ makeBlock conn = do
       }
     }
 
-getSiblings :: Connection -> Block -> IO [BlockData]
-getSiblings conn Block{blockBlockData = BlockData{blockDataParentHash = pHash}} =
-  let connStr = postgreSQLConnectionString defaultConnectInfo
-  in runNoLoggingT $ withPostgresqlConn connStr $ runSqlConn $ do
+getSiblings :: Block -> ConnT [BlockData]
+getSiblings Block{blockBlockData = BlockData{blockDataParentHash = pHash}} =
+  asPersistTransaction $ do
     blocks <-
       select $
       from $ \(block `InnerJoin` blockDR) -> do
@@ -76,10 +93,9 @@ getSiblings conn Block{blockBlockData = BlockData{blockDataParentHash = pHash}} 
         return block
     return $ map (blockBlockData . entityVal) blocks
 
-getGreenTXs :: Connection -> Entity Block -> IO [Transaction]
-getGreenTXs conn blockE = do
-  let connStr = postgreSQLConnectionString defaultConnectInfo
-  runNoLoggingT $ withPostgresqlConn connStr $ runSqlConn $ do
+getGreenTXs :: Entity Block -> ConnT [Transaction]
+getGreenTXs conn blockE =
+  asPersistTransaction $ do
     earliest:_ <- do
       txs <-
         select $

@@ -17,7 +17,7 @@ cabal-version:       >=1.10
 
 executable strato-quarry
   main-is:             Main.hs
-  other-modules:       Trigger
+  other-modules:       Trigger, Wrapper, SQLFunctions, SQLMonad
   other-extensions:    OverloadedStrings
   build-depends:       base >=4.8 && <4.9,
                        bytestring,
