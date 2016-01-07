@@ -16,6 +16,7 @@ import Database.Persist.Postgresql hiding (Connection)
 import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.Notification
 import Network.Haskoin.Internals (makePrvKey)
+import Data.ByteString.Char8 (unpack, pack)
 
 import qualified Blockchain.Database.MerklePatricia as MP
 import qualified Data.ByteString as B
@@ -46,7 +47,9 @@ main = do
         lift $ openSimpleConn f conn
   _ <- setupTrigger conn
   forever $ do
-    _ <- getNotification conn
+    --_ <- getNotification conn
+    Notification _ notifChannel notifData <- getNotification conn
+    putStr $ "Trigger on " ++ (unpack notifChannel) ++ " data is: " ++ (unpack notifData) ++ "\n"
     ts <- getCurrentTime
     runResourceT $ runNoLoggingT $ withSqlPool (const sConn) 1 $ \sPool -> flip runReaderT sPool $
       putBlocks [
