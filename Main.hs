@@ -27,7 +27,6 @@ main = do
       connectDatabase = "eth"
       } $
     do
-      best <- getBestBlock
-      seedBlock <- makeNewBlock best
+      seedBlock <- makeNewBlock
       setupTriggers
       evalStateT (forever makeBlock) seedBlock

@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
 module Wrapper (makeBlock, makeNewBlock) where
 
 import Blockchain.Data.Address
@@ -10,6 +10,7 @@ import Blockchain.Database.MerklePatricia hiding (Key)
 import Blockchain.SHA
 import Blockchain.Verifier
 
+import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Logger
 import Control.Monad.Trans.Class
@@ -29,24 +30,29 @@ import Network.Haskoin.Internals (makePrvKey, PrvKey)
 import Trigger
 import SQLMonad
 
+import Debug.Trace
+
 makeBlock :: StateT Block ConnT ()
 makeBlock = do
-  notifyData <- lift waitNotifyData
-  case notifyData of
-    NewBestBlock blockE -> put =<< lift (makeNewBlock blockE)
-    NewTransactions txs -> do
+  channel <- lift waitNotifyData
+  case channel of
+    QuarryNewTX -> do
+      txs <- lift getNewTransactions
       oldBlock <- get
       let oldTXs = blockReceiptTransactions oldBlock
           newTXs = oldTXs ++ txs
       put $ oldBlock { blockReceiptTransactions = newTXs }
+    QuarryBestBlock -> put =<< lift makeNewBlock
   madeBlock <- get
-  _ <- lift $ asPersistTransaction $ putBlock madeBlock
-  return ()
+  when (not . null $ blockReceiptTransactions madeBlock) $ do
+    lift $ asPersistTransaction $ putBlock madeBlock
+    return ()
 
-makeNewBlock :: Entity Block -> ConnT Block
-makeNewBlock blockE = do
-  txs <- getGreenTXs blockE
-  constructBlock blockE txs
+makeNewBlock :: ConnT Block
+makeNewBlock = do
+  newBest <- getBestBlock
+  txs <- getGreenTXs newBest
+  constructBlock newBest txs
 
 constructBlock :: Entity Block -> [Transaction] -> ConnT Block
 constructBlock parentE txs = do
@@ -84,6 +90,8 @@ constructBlock parentE txs = do
       blockDataNonce = 5
       }
     }
+
+    where ourPrvKey = fromJust $ makePrvKey 57 :: PrvKey -- Grothendieck prime
 
 getSiblings :: Block -> ConnT [BlockData]
 getSiblings Block{blockBlockData = BlockData{blockDataParentHash = pHash}} =
@@ -142,6 +150,30 @@ getGreenTXs blockE =
         return rawTX
     return $ map (rawTX2TX . entityVal) rawtxs
 
-ourPrvKey = fromJust $ makePrvKey 57 :: PrvKey -- Grothendieck prime
+  where timeRadius = 60 :: NominalDiffTime -- seconds
 
-timeRadius = 60 :: NominalDiffTime -- seconds
+getBestBlock :: ConnT (Entity Block)
+getBestBlock = do
+  Just (Entity {entityVal = Extra {extraValue = eV}}) <-
+    asPersistTransaction $ getBy (TheKey "bestBlockNumber")
+  let (stateRoot, _ :: Integer) = read eV
+  blockFromStateRoot stateRoot
+
+blockFromStateRoot :: SHAPtr -> ConnT (Entity Block)
+blockFromStateRoot stateRoot = asPersistTransaction $ do
+  blocks <-
+    select $
+    from $ \(b `InnerJoin` bdr) -> do
+      on (b ^. BlockId ==. bdr ^. BlockDataRefBlockId &&.
+          bdr ^. BlockDataRefStateRoot ==. val stateRoot)
+      return b
+  return $ head blocks
+
+getNewTransactions :: ConnT [Transaction]
+getNewTransactions = asPersistTransaction $ do
+  rawtxEs <-
+    select $
+    from $ \rawtx -> do
+      where_ (rawtx ^. RawTransactionBlockNumber ==. val (-1))
+      return rawtx
+  return $ map (rawTX2TX . entityVal) rawtxEs
