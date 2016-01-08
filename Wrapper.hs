@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Wrapper (makeBlock, constructBlock) where
+module Wrapper (makeBlock, makeNewBlock) where
 
 import Blockchain.Data.Address
 import Blockchain.Data.BlockDB
@@ -33,19 +33,20 @@ makeBlock :: StateT Block ConnT ()
 makeBlock = do
   notifyData <- lift waitNotifyData
   case notifyData of
-    NewBestBlock blockE -> do
-      newBlock <- lift $ do
-        txs <- getGreenTXs blockE
-        constructBlock blockE txs
-      put newBlock
-    NewTransaction tx -> do
+    NewBestBlock blockE -> put =<< lift (makeNewBlock blockE)
+    NewTransactions txs -> do
       oldBlock <- get
       let oldTXs = blockReceiptTransactions oldBlock
-          newTXs = oldTXs ++ [tx]
+          newTXs = oldTXs ++ txs
       put $ oldBlock { blockReceiptTransactions = newTXs }
   madeBlock <- get
-  _ <- lift $ asPersistTransaction $ putBlock madeBlock $ blockHash madeBlock
+  _ <- lift $ asPersistTransaction $ putBlock madeBlock
   return ()
+
+makeNewBlock :: Entity Block -> ConnT Block
+makeNewBlock blockE = do
+  txs <- getGreenTXs blockE
+  constructBlock blockE txs
 
 constructBlock :: Entity Block -> [Transaction] -> ConnT Block
 constructBlock parentE txs = do
@@ -102,11 +103,15 @@ getGreenTXs blockE =
       txs <-
         select $
         from $ \rawTX -> do
-          on (rawTX ^. RawTransactionBlockId ==. val (entityKey blockE))
+          where_ (rawTX ^. RawTransactionBlockId ==. val (entityKey blockE))
           orderBy [asc $ rawTX ^. RawTransactionTimestamp]
           limit 1
           return rawTX
-      return $ map (rawTransactionTimestamp . entityVal) txs
+      return $
+        if null txs
+        then [blockDataTimestamp . blockBlockData . entityVal $ blockE]
+        else map (rawTransactionTimestamp . entityVal) txs
+
     let startTime = addUTCTime (negate timeRadius) earliest
     laterBlockEs <-
       select $
@@ -131,14 +136,12 @@ getGreenTXs blockE =
     rawtxs <-
       select $
       from $ \rawTX -> do
-        on $ (rawTX ^. RawTransactionTimestamp >. val startTime) &&.
+        where_ $ (rawTX ^. RawTransactionTimestamp >. val startTime) &&.
           (foldr1 (&&.) $
            map (\id -> rawTX ^. RawTransactionBlockId !=. val id) recentChainIds)
         return rawTX
     return $ map (rawTX2TX . entityVal) rawtxs
 
-ourPrvKey = fromJust $ makePrvKey
-            0x0000000000000000000000000000000000000000000000000000000000000000
-            :: PrvKey
+ourPrvKey = fromJust $ makePrvKey 57 :: PrvKey -- Grothendieck prime
 
 timeRadius = 60 :: NominalDiffTime -- seconds

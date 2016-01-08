@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
 
 module Trigger where
 
@@ -18,6 +18,8 @@ import Database.PostgreSQL.Simple.Notification
 import SQLFunctions
 import SQLMonad
 
+import Debug.Trace
+
 notifyName = "quarry"
 extraKey = "bestBlockNumber"
 
@@ -27,34 +29,41 @@ setupTriggers = asSimpleTransaction [
   clearTrigger bestTrigger bestTable,
   createTriggerFunction txFunc notifyName txData,
   createTriggerFunction bestFunc notifyName bestData,
-  createTrigger txTrigger txEvent txTable txEach txCond txFunc,
-  createTrigger bestTrigger bestEvent bestTable bestEach bestCond bestFunc,
+  createTrigger txTrigger txTable txFunc,
+  createTrigger bestTrigger bestTable bestFunc,
   listenTrigger notifyName
   ]
   where
-    txTrigger = "quarry_tx"         ; bestTrigger = "quarry_best"
-    txTable = "raw_transaction"     ; bestTable = "extra"
-    txFunc = "quarry_tx"            ; bestFunc = "quarry_best"
-    txData = "'TX (' || new || ')'" ; bestData = "'BB ' || new.value"
-    txEvent = "after insert"        ; bestEvent = "after insert"
-    txEach = "row"                  ; bestEach = "row"
-    txCond = ""                     ; bestCond = "new.the_key = '" ++ extraKey ++ "'"
+    txTrigger = "quarry_tx"    ; bestTrigger = "quarry_best"
+    txTable = "raw_transaction"; bestTable = "extra"
+    txFunc = "quarry_tx"       ; bestFunc = "quarry_best"
+    txData = "'TX'"            ; bestData = "'BB'"
 
 data NotifyData =
   NewBestBlock (Entity Block) |
-  NewTransaction Transaction
+  NewTransactions [Transaction]
 
-data NotifyPayload =
-  BB (SHAPtr, Integer) |
-  TX RawTransaction
-  deriving (Read)
+data NotifyPayload = BB | TX deriving (Read, Show)
 
 waitNotifyData :: ConnT NotifyData
 waitNotifyData = do
-  Notification _ _ notifData <- waitNotification
-  case read $ unpack notifData of
-    BB (stateRoot, _) -> NewBestBlock <$> blockFromStateRoot stateRoot
-    TX rawTX -> return $ NewTransaction $ rawTX2TX rawTX
+  Notification {notificationData = notifData} <- waitNotification
+  --NewTransactions <$> getNewTransactions
+  case notifData of --read $ unpack notifData of
+    "BB" -> do
+      trace "Got best block" $ return ()
+      NewBestBlock <$> getBestBlock
+    "TX" -> do
+      trace "Got new transaction(s)" $ return ()
+      NewTransactions <$> getNewTransactions
+    x -> error $ "notifData was: " ++ show x ++ "."
+
+getBestBlock :: ConnT (Entity Block)
+getBestBlock = do
+  Just (Entity {entityVal = Extra {extraValue = eV}}) <-
+    asPersistTransaction $ getBy (TheKey extraKey)
+  let (stateRoot, _ :: Integer) = read eV
+  blockFromStateRoot stateRoot
 
 blockFromStateRoot :: SHAPtr -> ConnT (Entity Block)
 blockFromStateRoot stateRoot = asPersistTransaction $ do
@@ -66,8 +75,11 @@ blockFromStateRoot stateRoot = asPersistTransaction $ do
       return b
   return $ head blocks
 
-getBestBlock :: ConnT (Entity Block)
-getBestBlock = do
-  Just (Entity {entityVal = Extra {extraValue = stateRoot}}) <-
-    asPersistTransaction $ getBy (TheKey extraKey)
-  blockFromStateRoot $ read stateRoot
+getNewTransactions :: ConnT [Transaction]
+getNewTransactions = asPersistTransaction $ do
+  rawtxEs <-
+    select $
+    from $ \rawtx -> do
+      where_ (rawtx ^. RawTransactionBlockNumber ==. val (-1))
+      return rawtx
+  return $ map (rawTX2TX . entityVal) rawtxEs

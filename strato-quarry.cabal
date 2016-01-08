@@ -36,6 +36,7 @@ executable strato-quarry
                        haskoin,
                        strato-conf,
                        resourcet,
-                       transformers
+                       transformers,
+                       hflags
   -- hs-source-dirs:      
   default-language:    Haskell2010
