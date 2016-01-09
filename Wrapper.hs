@@ -7,6 +7,7 @@ import Blockchain.Data.DataDefs
 import Blockchain.Data.RLP
 import Blockchain.Data.Transaction
 import Blockchain.Database.MerklePatricia hiding (Key)
+import Blockchain.EthConf
 import Blockchain.SHA
 import Blockchain.Verifier
 
@@ -108,7 +109,7 @@ constructBlock parentE txs = do
     blockBlockData = BlockData {
       blockDataParentHash = blockHash parent,
       blockDataUnclesHash = hash . rlpSerialize . RLPArray $ map rlpEncode uncles,
-      blockDataCoinbase = prvKey2Address ourPrvKey,
+      blockDataCoinbase = fromIntegral $ coinbaseAddress $ quarryConfig ethConf,
       blockDataStateRoot = SHAPtr "",
       blockDataTransactionsRoot = emptyTriePtr,
       blockDataReceiptsRoot = emptyTriePtr,
@@ -132,8 +133,6 @@ constructBlock parentE txs = do
       blockDataNonce = 5
       }
     }
-
-    where ourPrvKey = fromJust $ makePrvKey 57 :: PrvKey -- Grothendieck prime
 
 getSiblings :: Block -> ConnT [BlockData]
 getSiblings Block{blockBlockData = BlockData{blockDataParentHash = pHash}} =
