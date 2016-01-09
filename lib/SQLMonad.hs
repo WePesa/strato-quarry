@@ -27,7 +27,7 @@ withConnInfo :: ConnectInfo -> ConnT a -> IO a
 withConnInfo ci cx =
   runNoLoggingT $ runResourceT $ do
     (_, sConn) <- allocate (connect ci) close
-    lift $ withSqlPool (\log -> openSimpleConn log sConn) 1 $ \pPool ->
+    lift $ withSqlPool (\logf -> openSimpleConn logf sConn) 1 $ \pPool ->
       runReaderT cx 
       SQLConns {
         simpleConn = sConn,

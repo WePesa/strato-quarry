@@ -17,10 +17,21 @@ cabal-version:       >=1.10
 
 executable strato-quarry
   main-is:             Main.hs
-  other-modules:       Trigger, Wrapper, SQLFunctions, SQLMonad, Debug
-  other-extensions:    OverloadedStrings
+  build-depends:       base >=4.8 && <4.9,
+                       strato-conf,
+                       strato-quarry,
+                       transformers,
+                       postgresql-simple,
+                       hflags
+  ghc-options:         -Wall -O2
+  hs-source-dirs:      bin
+  default-language:    Haskell2010
+
+library
+  default-language:    Haskell2010
   build-depends:       base >=4.8 && <4.9,
                        bytestring,
+                       persistent,
                        persistent-postgresql,
                        postgresql-simple,
                        blockapps-data,
@@ -37,5 +48,17 @@ executable strato-quarry
                        hflags,
                        monad-logger,
                        esqueleto
-  -- hs-source-dirs:      
-  default-language:    Haskell2010
+  exposed-modules:     Blockchain.Quarry
+                       Blockchain.Quarry.Flags
+                       Blockchain.Quarry.BlockConstruction
+                       Blockchain.Quarry.SQL.Simple
+                       Blockchain.Quarry.SQL.Persist
+                       Blockchain.Quarry.SQL.Conn
+  other-modules:       Wrapper
+                       BlockConstruction
+                       PersistSQL
+                       SQLMonad
+                       SimpleSQL
+                       Debug
+  ghc-options:         -Wall -O2
+  hs-source-dirs:      lib
