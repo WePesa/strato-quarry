@@ -30,8 +30,7 @@ import Network.Haskoin.Internals (makePrvKey, PrvKey)
 
 import Trigger
 import SQLMonad
-
-import Debug.Trace
+import Debug
 
 type BlockIds = (Key Block, Key BlockDataRef)
 data DBBlock = DBBlock {
@@ -62,7 +61,17 @@ updateBlock oldDBBlock = do
       newTXs = oldTXs ++ txs
       b = oldBlock { blockReceiptTransactions = newTXs }
   bids <- makeBlockIds b
-  maybe (return ()) (asPersistTransaction . deleteBlockQ) oldBIdsM
+  maybe
+    (debugPrint "\t(New block)\n---\n")
+    (
+      \oldBIds@(bId, bdId) -> do
+        asPersistTransaction . deleteBlockQ $ oldBIds
+        debugPrint $
+          "\tReplacing block " ++
+          "(bId: " ++ show bId ++ ", bdId: " ++ show bdId ++ ")\n" ++
+          "---\n"
+    )
+    oldBIdsM
   return DBBlock {
     dbBlock = b,
     dbBlockIds = Just bids
@@ -83,9 +92,12 @@ makeNewBlock = do
   b <- constructBlock newBest txs
   bidsM <-
     if not . null $ blockReceiptTransactions b
-    then Just <$> makeBlockIds b
+    then do
+      r <- Just <$> makeBlockIds b
+      debugPrint "\t(New block)\n---\n"
+      return r
     else do
-      liftIO $ putStrLn "Empty block; not committing"
+      debugPrint "Empty block; not committing\n"
       return Nothing
   return DBBlock {
     dbBlock = b,
@@ -94,8 +106,14 @@ makeNewBlock = do
 
 makeBlockIds :: Block -> ConnT BlockIds
 makeBlockIds b = do
-  liftIO $ putStrLn "Committing the block to the database"
-  asPersistTransaction $ putBlock b
+  bids@(bId, bdId) <- asPersistTransaction $ putBlock b
+  debugPrint $ "--- \n" ++
+    "\tInserted block (bId: " ++ show bId ++ ", bdId: " ++ show bdId ++ ")\n" ++
+    "\tBlock hash: " ++ show (blockHash b) ++ "\n" ++
+    "\tIncluding transactions: \n" ++
+    (concatMap (\t -> "\t\tTX Hash: " ++ show (transactionHash t) ++ "\n") $
+     blockReceiptTransactions b)
+  return bids
 
 constructBlock :: Entity Block -> [Transaction] -> ConnT Block
 constructBlock parentE txs = do
