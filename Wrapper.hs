@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
-module Wrapper (makeBlock, makeNewBlock) where
+module Wrapper (waitMakeBlock, makeNewBlock) where
 
 import Blockchain.Data.Address
 import Blockchain.Data.BlockDB
@@ -32,27 +32,69 @@ import SQLMonad
 
 import Debug.Trace
 
-makeBlock :: StateT Block ConnT ()
-makeBlock = do
-  channel <- lift waitNotifyData
-  case channel of
-    QuarryNewTX -> do
-      txs <- lift getNewTransactions
-      oldBlock <- get
-      let oldTXs = blockReceiptTransactions oldBlock
-          newTXs = oldTXs ++ txs
-      put $ oldBlock { blockReceiptTransactions = newTXs }
-    QuarryBestBlock -> put =<< lift makeNewBlock
-  madeBlock <- get
-  when (not . null $ blockReceiptTransactions madeBlock) $ do
-    lift $ asPersistTransaction $ putBlock madeBlock
-    return ()
+type BlockIds = (Key Block, Key BlockDataRef)
+data DBBlock = DBBlock {
+  dbBlock :: Block,
+  dbBlockIds :: Maybe BlockIds
+  }
 
-makeNewBlock :: ConnT Block
+waitMakeBlock :: StateT DBBlock ConnT ()
+waitMakeBlock = modifyM $ lift . waitMakeNextBlock
+
+modifyM :: (Monad m) => (s -> StateT s m s) -> StateT s m ()
+modifyM f = put =<< f =<< get                    
+
+waitMakeNextBlock :: DBBlock -> ConnT DBBlock
+waitMakeNextBlock oldDBBlock = do
+  channel <- waitNotifyData
+  case channel of
+    QuarryNewTX -> updateBlock oldDBBlock
+    QuarryBestBlock -> makeNewBlock
+
+updateBlock :: DBBlock -> ConnT DBBlock
+updateBlock oldDBBlock = do
+  liftIO $ putStrLn "New transactions: update previous block"
+  txs <- getNewTransactions
+  let oldBlock = dbBlock oldDBBlock
+      oldBIdsM = dbBlockIds oldDBBlock
+      oldTXs = blockReceiptTransactions oldBlock
+      newTXs = oldTXs ++ txs
+      b = oldBlock { blockReceiptTransactions = newTXs }
+  bids <- makeBlockIds b
+  maybe (return ()) (asPersistTransaction . deleteBlockQ) oldBIdsM
+  return DBBlock {
+    dbBlock = b,
+    dbBlockIds = Just bids
+    }
+
+deleteBlockQ :: BlockIds -> SqlPersistT ConnT ()
+deleteBlockQ (bId, bdId) = do
+  delete $ from $ \p -> where_ (p ^. UnprocessedBlockId ==. val bId)
+  delete $ from $ \b -> where_ (b ^. BlockDataRefId ==. val bdId)
+  delete $ from $ \b -> where_ (b ^. BlockId ==. val bId)
+  return ()
+
+makeNewBlock :: ConnT DBBlock
 makeNewBlock = do
+  liftIO $ putStrLn "New best block: making a new block"
   newBest <- getBestBlock
   txs <- getGreenTXs newBest
-  constructBlock newBest txs
+  b <- constructBlock newBest txs
+  bidsM <-
+    if not . null $ blockReceiptTransactions b
+    then Just <$> makeBlockIds b
+    else do
+      liftIO $ putStrLn "Empty block; not committing"
+      return Nothing
+  return DBBlock {
+    dbBlock = b,
+    dbBlockIds = bidsM
+    }
+
+makeBlockIds :: Block -> ConnT BlockIds
+makeBlockIds b = do
+  liftIO $ putStrLn "Committing the block to the database"
+  asPersistTransaction $ putBlock b
 
 constructBlock :: Entity Block -> [Transaction] -> ConnT Block
 constructBlock parentE txs = do

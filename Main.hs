@@ -3,6 +3,7 @@
 import Blockchain.EthConf
 import Blockchain.VMOptions
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.Monad.Trans.State
 import Database.PostgreSQL.Simple
 import HFlags
@@ -27,6 +28,7 @@ main = do
       connectDatabase = "eth"
       } $
     do
-      seedBlock <- makeNewBlock
+      liftIO $ putStrLn "Creating a seed block"
+      seedDBBlock <- makeNewBlock
       setupTriggers
-      evalStateT (forever makeBlock) seedBlock
+      evalStateT (forever waitMakeBlock) seedDBBlock

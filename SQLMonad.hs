@@ -18,14 +18,14 @@ data SQLConns = SQLConns {
   persistPool :: ConnectionPool
   }
 
-type ConnT = ReaderT SQLConns (LoggingT IO)
+type ConnT = ReaderT SQLConns (NoLoggingT IO)
 
 instance HasSQLDB (ResourceT ConnT) where
   getSQLDB = persistPool <$> lift ask
 
 withConnInfo :: ConnectInfo -> ConnT a -> IO a
 withConnInfo ci cx =
-  runStdoutLoggingT $ runResourceT $ do
+  runNoLoggingT $ runResourceT $ do
     (_, sConn) <- allocate (connect ci) close
     lift $ withSqlPool (\log -> openSimpleConn log sConn) 1 $ \pPool ->
       runReaderT cx 
