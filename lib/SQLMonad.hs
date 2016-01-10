@@ -2,14 +2,15 @@
 module SQLMonad where
 
 import Blockchain.DB.SQLDB
+import Blockchain.EthConf
 import Control.Monad.IO.Class
 import Control.Monad.Logger
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Resource
 import Data.ByteString.Char8 (pack)
-import Database.Persist.Postgresql hiding (Connection)
-import Database.PostgreSQL.Simple
+import Database.Persist.Postgresql hiding (Connection) 
+import Database.PostgreSQL.Simple hiding (postgreSQLConnectionString)
 import Database.PostgreSQL.Simple.Notification
 import Database.PostgreSQL.Simple.Types
 
@@ -23,9 +24,9 @@ type ConnT = ReaderT SQLConns (NoLoggingT IO)
 instance HasSQLDB (ResourceT ConnT) where
   getSQLDB = persistPool <$> lift ask
 
-withConnInfo :: ConnectInfo -> ConnT a -> IO a
-withConnInfo ci cx =
-  let cs = postgreSQLConnectionString ci
+runConnT :: ConnT a -> IO a
+runConnT cx =
+  let cs = postgreSQLConnectionString $ sqlConfig ethConf
   in runNoLoggingT $ runResourceT $ do
     (_, sConn) <- allocate (connectPostgreSQL cs) close
     lift $ withPostgresqlPool cs 1 $ \pPool ->
