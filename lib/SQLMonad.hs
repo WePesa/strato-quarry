@@ -25,9 +25,10 @@ instance HasSQLDB (ResourceT ConnT) where
 
 withConnInfo :: ConnectInfo -> ConnT a -> IO a
 withConnInfo ci cx =
-  runNoLoggingT $ runResourceT $ do
-    (_, sConn) <- allocate (connect ci) close
-    lift $ withSqlPool (\logf -> openSimpleConn logf sConn) 1 $ \pPool ->
+  let cs = postgreSQLConnectionString ci
+  in runNoLoggingT $ runResourceT $ do
+    (_, sConn) <- allocate (connectPostgreSQL cs) close
+    lift $ withPostgresqlPool cs 1 $ \pPool ->
       runReaderT cx 
       SQLConns {
         simpleConn = sConn,
