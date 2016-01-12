@@ -8,6 +8,7 @@ import Blockchain.Data.Transaction
 import Blockchain.Database.MerklePatricia hiding (Key)
 import Blockchain.DB.SQLDB
 import Blockchain.EthConf
+import Blockchain.Format
 import Blockchain.SHA
 import Blockchain.Verifier
 
@@ -38,18 +39,24 @@ updateBlock oldDBBlock = do
       b = oldBlock { blockReceiptTransactions = newTXs }
   bids <- makeBlockIds b
   maybe
-    (debugPrint "\t(New block)\n---\n")
+    (debugPrints [
+        startDebugBlockLine, "(New block)",
+        endDebugBlock
+        ]
+    )
     (
-      \oldBIds@(bId, bdId) -> do
-        _ <-
+      \oldBIds -> do
+        debugPrefix <-
           if (blockDataNonce $ blockBlockData $ dbBlock oldDBBlock) /= 5
-          then debugPrint "\tNot replacing mined block "
+          then return [
+            startDebugBlockLine, "Not replacing mined block "
+            ]
           else do
             deleteBlockQ oldBIds
-            debugPrint "\tReplacing block "
-        debugPrint $
-          "(bId: " ++ show bId ++ ", bdId: " ++ show bdId ++ ")\n" ++
-          "---\n"
+            return [
+              startDebugBlockLine, "Replacing block "
+              ]
+        debugPrints $ debugPrefix ++ [showBlockIds oldBIds]
     )
     oldBIdsM
   return DBBlock {
@@ -67,7 +74,10 @@ makeNewBlock = do
     if not . null $ blockReceiptTransactions b
     then do
       r <- Just <$> makeBlockIds b
-      debugPrint "\t(New block)\n---\n"
+      debugPrints [
+        startDebugBlockLine, "(New block)",
+        endDebugBlock
+        ]
       return r
     else do
       debugPrint "Empty block; not committing\n"
@@ -79,13 +89,13 @@ makeNewBlock = do
 
 makeBlockIds :: (HasSQLDB (ResourceT m), MonadThrow m, MonadBaseControl IO m, MonadIO m) => Block -> SqlPersistT m BlockIds
 makeBlockIds b = do
-  bids@(bId, bdId) <- putBlock b
-  debugPrint $ "--- \n" ++
-    "\tInserted block (bId: " ++ show bId ++ ", bdId: " ++ show bdId ++ ")\n" ++
-    "\tBlock hash: " ++ show (blockHash b) ++ "\n" ++
-    "\tIncluding transactions: \n" ++
-    (concatMap (\t -> "\t\tTX Hash: " ++ show (transactionHash t) ++ "\n") $
-     blockReceiptTransactions b)
+  bids <- putBlock b
+  debugPrints [
+    startDebugBlock,
+    startDebugBlockLine, "Inserted block ", showBlockIds bids,
+    startDebugBlockLine, "Block hash: ", showBlockHash b,
+    startDebugBlockLine, "Including transactions: ", showTXHashes b
+    ]
   return bids
 
   where putBlock b = lift $ runResourceT $ head <$> putBlocks [b]

@@ -47,7 +47,8 @@ library
                        transformers,
                        hflags,
                        monad-logger,
-                       esqueleto
+                       esqueleto,
+                       blockapps-util
   exposed-modules:     Blockchain.Quarry
                        Blockchain.Quarry.Flags
                        Blockchain.Quarry.BlockConstruction
