@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
 
 module BlockConstruction where
 
@@ -6,11 +6,14 @@ import Blockchain.Data.BlockDB
 import Blockchain.Data.RLP
 import Blockchain.Data.Transaction
 import Blockchain.Database.MerklePatricia hiding (Key)
+import Blockchain.DB.SQLDB
 import Blockchain.EthConf
 import Blockchain.SHA
 import Blockchain.Verifier
 
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Resource
 
 import Data.Time.Clock
 
@@ -24,7 +27,7 @@ data DBBlock = DBBlock {
   dbBlockIds :: Maybe BlockIds
   }
 
-updateBlock :: (MonadIO m) => DBBlock -> SqlPersistT m DBBlock
+updateBlock :: (HasSQLDB (ResourceT m), MonadThrow m, MonadBaseControl IO m, MonadIO m) => DBBlock -> SqlPersistT m DBBlock
 updateBlock oldDBBlock = do
   liftIO $ putStrLn "New transactions: update previous block"
   txs <- getNewTransactions
@@ -38,9 +41,13 @@ updateBlock oldDBBlock = do
     (debugPrint "\t(New block)\n---\n")
     (
       \oldBIds@(bId, bdId) -> do
-        deleteBlockQ oldBIds
+        _ <-
+          if (blockDataNonce $ blockBlockData $ dbBlock oldDBBlock) /= 5
+          then debugPrint "\tNot replacing mined block "
+          else do
+            deleteBlockQ oldBIds
+            debugPrint "\tReplacing block "
         debugPrint $
-          "\tReplacing block " ++
           "(bId: " ++ show bId ++ ", bdId: " ++ show bdId ++ ")\n" ++
           "---\n"
     )
@@ -50,7 +57,7 @@ updateBlock oldDBBlock = do
     dbBlockIds = Just bids
     }
 
-makeNewBlock :: (MonadIO m) => SqlPersistT m DBBlock
+makeNewBlock :: (HasSQLDB (ResourceT m), MonadThrow m, MonadBaseControl IO m, MonadIO m) => SqlPersistT m DBBlock
 makeNewBlock = do
   liftIO $ putStrLn "New best block: making a new block"
   newBest <- getBestBlock
@@ -70,7 +77,7 @@ makeNewBlock = do
     dbBlockIds = bidsM
     }
 
-makeBlockIds :: (MonadIO m) => Block -> SqlPersistT m BlockIds
+makeBlockIds :: (HasSQLDB (ResourceT m), MonadThrow m, MonadBaseControl IO m, MonadIO m) => Block -> SqlPersistT m BlockIds
 makeBlockIds b = do
   bids@(bId, bdId) <- putBlock b
   debugPrint $ "--- \n" ++
@@ -80,6 +87,32 @@ makeBlockIds b = do
     (concatMap (\t -> "\t\tTX Hash: " ++ show (transactionHash t) ++ "\n") $
      blockReceiptTransactions b)
   return bids
+
+  where putBlock b = lift $ runResourceT $ head <$> putBlocks [b]
+
+{- Proposed alternative definition of putBlock, for blockapps-data -}
+
+-- putBlock :: (MonadIO m) =>
+--             Block -> E.SqlPersistT m (Key Block, Key BlockDataRef)
+-- putBlock b = do
+--   blkId <- SQL.insert $ b
+--   toInsert <- blk2BlkDataRef b blkId
+--   time <- liftIO getCurrentTime
+--   mapM_ (insertOrUpdate b blkId) ((map (\tx -> txAndTime2RawTX tx blkId (blockDataNumber (blockBlockData b)) time)  (blockReceiptTransactions b)))
+--   blkDataRefId <- SQL.insert $ toInsert
+--   _ <- SQL.insert $ Unprocessed blkId
+--   return $ (blkId, blkDataRefId)
+
+--   where insertOrUpdate b blkid rawTX  = do
+--           (txId :: [Entity RawTransaction]) <- SQL.selectList [ RawTransactionTxHash SQL.==. (rawTransactionTxHash rawTX )] [ ]
+--           case txId of
+--             [] -> do
+--               _ <- SQL.insert rawTX
+--               return ()
+--             lst -> mapM_ (\t -> SQL.update (SQL.entityKey t)
+--                                 [ RawTransactionBlockId SQL.=. blkid,
+--                                   RawTransactionBlockNumber SQL.=. (fromIntegral $ blockDataNumber (blockBlockData b)) ])
+--                    lst
 
 constructBlock :: (MonadIO m) => Entity Block -> [Transaction] -> SqlPersistT m Block
 constructBlock parentE txs = do

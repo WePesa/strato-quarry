@@ -29,7 +29,9 @@ runConnT cx =
   let cs = postgreSQLConnectionString $ sqlConfig ethConf
   in runNoLoggingT $ runResourceT $ do
     (_, sConn) <- allocate (connectPostgreSQL cs) close
-    lift $ withPostgresqlPool cs 1 $ \pPool ->
+    -- 2 is important here so long as the addBlock hack is being used
+    -- in BlockConstruction.hs
+    lift $ withPostgresqlPool cs 2 $ \pPool ->
       runReaderT cx 
       SQLConns {
         simpleConn = sConn,
