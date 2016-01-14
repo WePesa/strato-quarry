@@ -10,7 +10,6 @@ import Blockchain.DB.SQLDB
 import Blockchain.EthConf
 import Blockchain.Format
 import Blockchain.SHA
-import Blockchain.Verifier
 
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
@@ -144,6 +143,7 @@ constructBlock parentE txs = do
         "0000000000000000000000000000000000000000000000000000000000000000",
       blockDataDifficulty =
         nextDifficulty
+        False
         (blockDataNumber parentData)
         (blockDataDifficulty parentData)
         (blockDataTimestamp parentData)
