@@ -9,7 +9,7 @@ import Blockchain.Data.Transaction
 import Blockchain.Database.MerklePatricia hiding (Key)
 import Blockchain.DB.SQLDB
 import Blockchain.EthConf
-import Blockchain.Format
+import Blockchain.Format ()
 import Blockchain.SHA
 
 import Control.Monad.IO.Class
@@ -19,7 +19,7 @@ import Control.Monad.Trans.Resource
 import Data.Time.Clock
 
 import Database.Esqueleto
-import Database.Persist.Sql (SqlPersistT)
+import Database.Persist.Sql ()
 
 import PersistSQL
 import Debug
@@ -47,8 +47,12 @@ updateBlock oldDBBlock = do
     )
     (
       \oldBIds -> do
+        oldBlockNewNonce:_ <-
+          select $ from $ \bdr -> do
+            where_ (bdr ^. BlockDataRefId ==. val (snd oldBIds))
+            return $ bdr ^. BlockDataRefNonce
         debugPrefix <-
-          if (blockDataNonce $ blockBlockData $ dbBlock oldDBBlock) /= 5
+          if (unValue oldBlockNewNonce) /= 5
           then return [
             startDebugBlockLine, "Not replacing mined block "
             ]
@@ -98,7 +102,7 @@ makeBlockIds b = do
     ]
   return bids
 
-  where putBlock b = lift $ runResourceT $ head <$> putBlocks [b] True
+  where putBlock x = lift $ runResourceT $ head <$> putBlocks [x] True
 
 {- Proposed alternative definition of putBlock, for blockapps-data -}
 
