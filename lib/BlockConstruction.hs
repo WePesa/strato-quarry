@@ -33,11 +33,31 @@ updateBlock :: (HasSQLDB (ResourceT m), MonadThrow m, MonadBaseControl IO m, Mon
 updateBlock oldDBBlock = do
   liftIO $ putStrLn "New transactions: update previous block"
   txs <- getNewTransactions
+  time <- liftIO $ getCurrentTime
   let oldBlock = dbBlock oldDBBlock
       oldBIdsM = dbBlockIds oldDBBlock
       oldTXs = blockReceiptTransactions oldBlock
       newTXs = oldTXs ++ txs
-      b = oldBlock { blockReceiptTransactions = newTXs }
+      oldBD = blockBlockData oldBlock
+  parentE:_ <- select $ from $ \(b `InnerJoin` bdr) -> do
+    on (b ^. BlockId ==. bdr ^. BlockDataRefBlockId &&.
+        bdr ^. BlockDataRefHash ==. val (blockDataParentHash oldBD))
+    return b
+  let parentData = blockBlockData $ entityVal $ parentE
+      newBD = oldBD {
+        blockDataTimestamp = time,
+        blockDataDifficulty =
+          nextDifficulty
+          False
+          (blockDataNumber parentData)
+          (blockDataDifficulty parentData)
+          (blockDataTimestamp parentData)
+          time
+        }
+      b = oldBlock {
+        blockReceiptTransactions = newTXs,
+        blockBlockData = newBD
+        }
   bids <- makeBlockIds b
   maybe
     (debugPrints [
@@ -46,22 +66,25 @@ updateBlock oldDBBlock = do
         ]
     )
     (
-      \oldBIds -> do
-        oldBlockNewNonce:_ <-
-          select $ from $ \bdr -> do
-            where_ (bdr ^. BlockDataRefId ==. val (snd oldBIds))
-            return $ bdr ^. BlockDataRefNonce
-        debugPrefix <-
-          if (unValue oldBlockNewNonce) /= 5
-          then return [
-            startDebugBlockLine, "Not replacing mined block "
-            ]
-          else do
-            deleteBlockQ oldBIds
-            return [
-              startDebugBlockLine, "Replacing block "
+      \oldBIds -> 
+      --   oldBlockNewNonce:_ <-
+      --     select $ from $ \bdr -> do
+      --       where_ (bdr ^. BlockDataRefId ==. val (snd oldBIds))
+      --       return $ bdr ^. BlockDataRefNonce
+      --   debugPrefix <-
+      --     if (unValue oldBlockNewNonce) /= 5
+      --     then return [
+      --       startDebugBlockLine, "Not replacing mined block "
+      --       ]
+      --     else do
+      --       deleteBlockQ oldBIds
+      --       return [
+      --         startDebugBlockLine, "Replacing block "
+      --         ]
+        let debugPrefix = [
+              startDebugBlockLine, "Updating block: "
               ]
-        debugPrints $ debugPrefix ++ [showBlockIds oldBIds, endDebugBlock]
+        in debugPrints $ debugPrefix ++ [showBlockIds oldBIds, endDebugBlock]
     )
     oldBIdsM
   return DBBlock {
