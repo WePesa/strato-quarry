@@ -3,6 +3,7 @@
 module BlockConstruction where
 
 import Blockchain.Data.BlockDB
+import Blockchain.Data.DataDefs
 import Blockchain.Data.RLP
 import Blockchain.Data.Transaction
 import Blockchain.Database.MerklePatricia hiding (Key)
@@ -17,7 +18,8 @@ import Control.Monad.Trans.Resource
 
 import Data.Time.Clock
 
-import Database.Persist.Sql
+import Database.Esqueleto
+import Database.Persist.Sql (SqlPersistT)
 
 import PersistSQL
 import Debug
@@ -92,12 +94,11 @@ makeBlockIds b = do
   debugPrints [
     startDebugBlock,
     startDebugBlockLine, "Inserted block ", showBlockIds bids,
-    startDebugBlockLine, "Block hash: ", showBlockHash b,
     startDebugBlockLine, "Including transactions: ", showTXHashes b
     ]
   return bids
 
-  where putBlock b = lift $ runResourceT $ head <$> putBlocks [b]
+  where putBlock b = lift $ runResourceT $ head <$> putBlocks [b] True
 
 {- Proposed alternative definition of putBlock, for blockapps-data -}
 
