@@ -57,7 +57,7 @@ updateBlock oldDBBlock = do
             return [
               startDebugBlockLine, "Replacing block "
               ]
-        debugPrints $ debugPrefix ++ [showBlockIds oldBIds]
+        debugPrints $ debugPrefix ++ [showBlockIds oldBIds, endDebugBlock]
     )
     oldBIdsM
   return DBBlock {
