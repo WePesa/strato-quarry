@@ -12,6 +12,7 @@ import Control.Monad.IO.Class
 import qualified Data.List as List
 import qualified Data.Map as Map
 import Data.Maybe
+import qualified Data.Set as Set
 import Data.Time.Clock
 
 import Database.Esqueleto
@@ -71,15 +72,16 @@ getGreenTXs blockE = do
           entityVal
           )
         recentChain
-      recentChainIds = map entityKey recentChain
+      recentTXs = concatMap (blockReceiptTransactions . entityVal) recentChain
   rawtxs <-
     select $
     from $ \rawTX -> do
-      where_ $ (rawTX ^. RawTransactionTimestamp >. val startTime) &&.
-        (foldr1 (&&.) $
-         map (\bid -> rawTX ^. RawTransactionBlockId !=. val bid) recentChainIds)
-      return rawTX
-  return $ map (rawTX2TX . entityVal) rawtxs
+      where_ $ (rawTX ^. RawTransactionTimestamp >. val startTime)
+      return $ rawTX
+  let greenTXs = Set.toList $
+                 (Set.fromList $ map (rawTX2TX . entityVal) rawtxs) Set.\\
+                 (Set.fromList recentTXs)        
+  return greenTXs
 
   where timeRadius = 60 :: NominalDiffTime -- seconds
 

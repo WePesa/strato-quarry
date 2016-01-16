@@ -32,14 +32,9 @@ data DBBlock = DBBlock {
 updateBlock :: (HasSQLDB (ResourceT m), MonadThrow m, MonadBaseControl IO m, MonadIO m) => DBBlock -> SqlPersistT m DBBlock
 updateBlock oldDBBlock = do
   liftIO $ putStrLn "New transactions: update previous block"
+  let oldTXs = blockReceiptTransactions $ dbBlock oldDBBlock
   txs <- getNewTransactions
-  best <- getBestBlock
-  time <- liftIO $ getCurrentTime
-  let oldBlock = dbBlock oldDBBlock
-      oldBIdsM = dbBlockIds oldDBBlock
-      oldTXs = blockReceiptTransactions oldBlock
-      newTXs = oldTXs ++ txs
-  newBlock <- constructBlock best newTXs
+  newBlock <- constructBlock $ oldTXs ++ txs
   bids <- makeBlockIds newBlock
   maybe
     (debugPrints [
@@ -53,7 +48,7 @@ updateBlock oldDBBlock = do
         endDebugBlock
         ]
     )
-    oldBIdsM
+    $ dbBlockIds oldDBBlock
   return DBBlock {
     dbBlock = newBlock,
     dbBlockIds = Just bids
@@ -64,7 +59,7 @@ makeNewBlock = do
   liftIO $ putStrLn "New best block: making a new block"
   newBest <- getBestBlock
   txs <- getGreenTXs newBest
-  b <- constructBlock newBest txs
+  b <- constructBlock txs
   bidsM <-
     if not . null $ blockReceiptTransactions b
     then do
@@ -118,8 +113,9 @@ makeBlockIds b = do
 --                                   RawTransactionBlockNumber SQL.=. (fromIntegral $ blockDataNumber (blockBlockData b)) ])
 --                    lst
 
-constructBlock :: (MonadIO m) => Entity Block -> [Transaction] -> SqlPersistT m Block
-constructBlock parentE txs = do
+constructBlock :: (MonadIO m) => [Transaction] -> SqlPersistT m Block
+constructBlock txs = do
+  parentE <- getBestBlock
   let parent = entityVal parentE
       parentData = blockBlockData parent
   parentHash:_ <- select $ from $ \bdr -> do
