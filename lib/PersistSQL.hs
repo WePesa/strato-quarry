@@ -85,20 +85,11 @@ getGreenTXs blockE = do
 
 getBestBlock :: (MonadIO m) => SqlPersistT m (Entity Block)
 getBestBlock = do
-  Just (Entity {entityVal = Extra {extraValue = eV}}) <-
-    getBy (TheKey "bestBlockNumber")
-  let (stateRoot, _ :: Integer) = read eV
-  blockFromStateRoot stateRoot
-
-blockFromStateRoot :: (MonadIO m) => SHAPtr -> SqlPersistT m (Entity Block)
-blockFromStateRoot stateRoot = do
-  blocks <-
-    select $
-    from $ \(b `InnerJoin` bdr) -> do
-      on (b ^. BlockId ==. bdr ^. BlockDataRefBlockId &&.
-          bdr ^. BlockDataRefStateRoot ==. val stateRoot)
-      return b
-  return $ head blocks
+  s <- getJust (ExtraKey "bestBlock")
+  let (bId, _::Integer) = read $ extraValue s
+  head <$> (select $ from $ \b -> do
+               where_ (b ^. BlockId ==. val bId)
+               return b)
 
 getNewTransactions :: (MonadIO m) => SqlPersistT m [Transaction]
 getNewTransactions = do

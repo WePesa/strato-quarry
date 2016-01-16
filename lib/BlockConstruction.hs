@@ -33,32 +33,14 @@ updateBlock :: (HasSQLDB (ResourceT m), MonadThrow m, MonadBaseControl IO m, Mon
 updateBlock oldDBBlock = do
   liftIO $ putStrLn "New transactions: update previous block"
   txs <- getNewTransactions
+  best <- getBestBlock
   time <- liftIO $ getCurrentTime
   let oldBlock = dbBlock oldDBBlock
       oldBIdsM = dbBlockIds oldDBBlock
       oldTXs = blockReceiptTransactions oldBlock
       newTXs = oldTXs ++ txs
-      oldBD = blockBlockData oldBlock
-  parentE:_ <- select $ from $ \(b `InnerJoin` bdr) -> do
-    on (b ^. BlockId ==. bdr ^. BlockDataRefBlockId &&.
-        bdr ^. BlockDataRefHash ==. val (blockDataParentHash oldBD))
-    return b
-  let parentData = blockBlockData $ entityVal $ parentE
-      newBD = oldBD {
-        blockDataTimestamp = time,
-        blockDataDifficulty =
-          nextDifficulty
-          False
-          (blockDataNumber parentData)
-          (blockDataDifficulty parentData)
-          (blockDataTimestamp parentData)
-          time
-        }
-      b = oldBlock {
-        blockReceiptTransactions = newTXs,
-        blockBlockData = newBD
-        }
-  bids <- makeBlockIds b
+  newBlock <- constructBlock best newTXs
+  bids <- makeBlockIds newBlock
   maybe
     (debugPrints [
         startDebugBlockLine, "(New block)",
@@ -66,29 +48,14 @@ updateBlock oldDBBlock = do
         ]
     )
     (
-      \oldBIds -> 
-      --   oldBlockNewNonce:_ <-
-      --     select $ from $ \bdr -> do
-      --       where_ (bdr ^. BlockDataRefId ==. val (snd oldBIds))
-      --       return $ bdr ^. BlockDataRefNonce
-      --   debugPrefix <-
-      --     if (unValue oldBlockNewNonce) /= 5
-      --     then return [
-      --       startDebugBlockLine, "Not replacing mined block "
-      --       ]
-      --     else do
-      --       deleteBlockQ oldBIds
-      --       return [
-      --         startDebugBlockLine, "Replacing block "
-      --         ]
-        let debugPrefix = [
-              startDebugBlockLine, "Updating block: "
-              ]
-        in debugPrints $ debugPrefix ++ [showBlockIds oldBIds, endDebugBlock]
+      \oldBIds -> debugPrints [
+        startDebugBlockLine, "Updating block: ", showBlockIds oldBIds,
+        endDebugBlock
+        ]
     )
     oldBIdsM
   return DBBlock {
-    dbBlock = b,
+    dbBlock = newBlock,
     dbBlockIds = Just bids
     }
 
@@ -155,13 +122,16 @@ constructBlock :: (MonadIO m) => Entity Block -> [Transaction] -> SqlPersistT m 
 constructBlock parentE txs = do
   let parent = entityVal parentE
       parentData = blockBlockData parent
+  parentHash:_ <- select $ from $ \bdr -> do
+    where_ (bdr ^. BlockDataRefBlockId ==. val (entityKey parentE))
+    return $ bdr ^. BlockDataRefHash
   uncles <- getSiblings parent
   time <- liftIO getCurrentTime
   return $ Block {
     blockBlockUncles = uncles,
     blockReceiptTransactions = txs,
     blockBlockData = BlockData {
-      blockDataParentHash = blockHash parent,
+      blockDataParentHash = unValue parentHash,
       blockDataUnclesHash = hash . rlpSerialize . RLPArray $ map rlpEncode uncles,
       blockDataCoinbase = fromIntegral $ coinbaseAddress $ quarryConfig ethConf,
       blockDataStateRoot = SHAPtr "",
