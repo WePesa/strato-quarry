@@ -5,7 +5,7 @@ module PersistSQL where
 import Blockchain.Data.BlockDB
 import Blockchain.Data.DataDefs
 import Blockchain.Data.Transaction
-import Blockchain.Database.MerklePatricia (SHAPtr)
+import Blockchain.Database.MerklePatricia ()
 
 import Control.Monad.IO.Class
 
@@ -17,6 +17,8 @@ import Data.Time.Clock
 
 import Database.Esqueleto
 import Database.Persist.Sql ()
+
+import Debug
 
 type BlockIds = (Key Block, Key BlockDataRef)
 
@@ -73,13 +75,17 @@ getGreenTXs blockE = do
           )
         recentChain
       recentTXs = concatMap (blockReceiptTransactions . entityVal) recentChain
-  rawtxs <-
+  alltxs <- fmap (map (rawTX2TX . entityVal)) $
     select $
     from $ \rawTX -> do
       where_ $ (rawTX ^. RawTransactionTimestamp >. val startTime)
       return $ rawTX
+  debugPrints $ "All recent transactions: \n":
+    map (\tx -> "  TX hash: " ++ (showHash $ transactionHash tx) ++ "\n") alltxs
+  debugPrints $ "Recent transactions in blocks: \n":
+    map (\tx -> "  TX hash: " ++ (showHash $ transactionHash tx) ++ "\n") recentTXs
   let greenTXs = Set.toList $
-                 (Set.fromList $ map (rawTX2TX . entityVal) rawtxs) Set.\\
+                 (Set.fromList alltxs) Set.\\
                  (Set.fromList recentTXs)        
   return greenTXs
 

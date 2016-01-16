@@ -32,8 +32,7 @@ makeNewBlock = do
     then do
       bids <- putBlock b
       debugPrints [
-        startDebugBlock,
-        startDebugBlockLine, "Inserted block ", showBlockIds bids,
+        startDebugBlock, "Inserted block ", show $ blockDataNumber $ blockBlockData b,
         startDebugBlockLine, "Parent hash: ", showHash $ blockDataParentHash $ blockBlockData b,
         startDebugBlockLine, "(Fake) hash: ", showHash $ blockHash b,
         startDebugBlockLine, "Including transactions: ", showTXHashes b,

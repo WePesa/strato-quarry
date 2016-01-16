@@ -31,14 +31,14 @@ showTXHashes b =
   concatMap (
     \t ->
     startDebugBlockLine ++ debugBlockIndent ++
-    "TX Hash: " ++ showHash (transactionHash t)) $
+    "TX Hash:   " ++ showHash (transactionHash t)) $
   blockReceiptTransactions b
 
 showBlockHash :: Block -> String
 showBlockHash b = showHash $ blockHash b
 
 startDebugBlock :: String
-startDebugBlock = "---"
+startDebugBlock = "--- "
 
 debugBlockIndent :: String
 debugBlockIndent = "  "
