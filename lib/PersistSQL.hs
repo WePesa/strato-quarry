@@ -54,12 +54,14 @@ getGreenTXs blockE = do
       then [blockDataTimestamp . blockBlockData . entityVal $ blockE]
       else map (rawTransactionTimestamp . entityVal) txs
 
-  let startTime = addUTCTime (negate timeRadius) earliest
+  let timeRadius = 60 :: NominalDiffTime -- seconds
+      blockStartTime = addUTCTime (2 * negate timeRadius) earliest
+      txStartTime = addUTCTime (negate timeRadius) earliest
   laterBlockEs <-
     select $
     from $ \(block `InnerJoin` blockDR) -> do
       on (blockDR ^. BlockDataRefBlockId ==. block ^. BlockId &&.
-          blockDR ^. BlockDataRefTimestamp >. val startTime)
+          blockDR ^. BlockDataRefTimestamp >. val blockStartTime)
       return block
   let recentBlockEMap = Map.fromList $ do
         recentBlockE@(Entity{entityVal = block}) <- laterBlockEs
@@ -78,18 +80,21 @@ getGreenTXs blockE = do
   alltxs <- fmap (map (rawTX2TX . entityVal)) $
     select $
     from $ \rawTX -> do
-      where_ $ (rawTX ^. RawTransactionTimestamp >. val startTime)
+      where_ $ (rawTX ^. RawTransactionTimestamp >. val txStartTime)
       return $ rawTX
   debugPrints $ "All recent transactions: \n":
     map (\tx -> "  TX hash: " ++ (showHash $ transactionHash tx) ++ "\n") alltxs
   debugPrints $ "Recent transactions in blocks: \n":
     map (\tx -> "  TX hash: " ++ (showHash $ transactionHash tx) ++ "\n") recentTXs
+  debugPrints $ "Taken from the blocks: \n" :
+    map (\bl -> "  Block hash: " ++ (showHash $ blockHash $ entityVal bl) ++ "\n")
+    recentChain
+  debugPrints $ "Hashes of all recent blocks: \n" :
+    map (\(h,_) -> "  Block hash: " ++ (showHash h) ++ "\n") (Map.toList recentBlockEMap)
   let greenTXs = Set.toList $
                  (Set.fromList alltxs) Set.\\
                  (Set.fromList recentTXs)        
   return greenTXs
-
-  where timeRadius = 60 :: NominalDiffTime -- seconds
 
 getBestBlock :: (MonadIO m) => SqlPersistT m (Entity Block)
 getBestBlock = do
