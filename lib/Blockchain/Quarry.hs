@@ -1,5 +1,5 @@
-module Blockchain.Quarry (module Wrapper, setupTriggers) where
+module Blockchain.Quarry (module BlockConstruction, setupTriggers) where
 
-import Wrapper
+import BlockConstruction
 import SimpleSQL
 

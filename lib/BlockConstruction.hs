@@ -9,7 +9,6 @@ import Blockchain.Data.Transaction
 import Blockchain.Database.MerklePatricia hiding (Key)
 import Blockchain.DB.SQLDB
 import Blockchain.EthConf
-import Blockchain.Format ()
 import Blockchain.SHA
 
 import Control.Monad.IO.Class
@@ -24,69 +23,25 @@ import Database.Persist.Sql ()
 import PersistSQL
 import Debug
 
-data DBBlock = DBBlock {
-  dbBlock :: Block,
-  dbBlockIds :: Maybe BlockIds
-  }
-
-updateBlock :: (HasSQLDB (ResourceT m), MonadThrow m, MonadBaseControl IO m, MonadIO m) => DBBlock -> SqlPersistT m DBBlock
-updateBlock oldDBBlock = do
-  liftIO $ putStrLn "New transactions: update previous block"
-  let oldTXs = blockReceiptTransactions $ dbBlock oldDBBlock
-  txs <- getNewTransactions
-  newBlock <- constructBlock $ oldTXs ++ txs
-  bids <- makeBlockIds newBlock
-  maybe
-    (debugPrints [
-        startDebugBlockLine, "(New block)",
-        endDebugBlock
-        ]
-    )
-    (
-      \oldBIds -> debugPrints [
-        startDebugBlockLine, "Updating block: ", showBlockIds oldBIds,
-        endDebugBlock
-        ]
-    )
-    $ dbBlockIds oldDBBlock
-  return DBBlock {
-    dbBlock = newBlock,
-    dbBlockIds = Just bids
-    }
-
-makeNewBlock :: (HasSQLDB (ResourceT m), MonadThrow m, MonadBaseControl IO m, MonadIO m) => SqlPersistT m DBBlock
+makeNewBlock :: (HasSQLDB (ResourceT m), MonadThrow m, MonadBaseControl IO m, MonadIO m) => SqlPersistT m Block
 makeNewBlock = do
-  liftIO $ putStrLn "New best block: making a new block"
   newBest <- getBestBlock
   txs <- getGreenTXs newBest
-  b <- constructBlock txs
-  bidsM <-
-    if not . null $ blockReceiptTransactions b
+  b <- constructBlock newBest txs
+  if not . null $ txs
     then do
-      r <- Just <$> makeBlockIds b
+      bids <- putBlock b
       debugPrints [
-        startDebugBlockLine, "(New block)",
+        startDebugBlock,
+        startDebugBlockLine, "Inserted block ", showBlockIds bids,
+        startDebugBlockLine, "Parent hash: ", showHash $ blockDataParentHash $ blockBlockData b,
+        startDebugBlockLine, "(Fake) hash: ", showHash $ blockHash b,
+        startDebugBlockLine, "Including transactions: ", showTXHashes b,
         endDebugBlock
         ]
-      return r
     else do
       debugPrint "Empty block; not committing\n"
-      return Nothing
-  return DBBlock {
-    dbBlock = b,
-    dbBlockIds = bidsM
-    }
-
-makeBlockIds :: (HasSQLDB (ResourceT m), MonadThrow m, MonadBaseControl IO m, MonadIO m) => Block -> SqlPersistT m BlockIds
-makeBlockIds b = do
-  bids <- putBlock b
-  debugPrints [
-    startDebugBlock,
-    startDebugBlockLine, "Inserted block ", showBlockIds bids,
-    startDebugBlockLine, "Including transactions: ", showTXHashes b
-    ]
-  return bids
-
+  return b
   where putBlock x = lift $ runResourceT $ head <$> putBlocks [x] True
 
 {- Proposed alternative definition of putBlock, for blockapps-data -}
@@ -113,9 +68,8 @@ makeBlockIds b = do
 --                                   RawTransactionBlockNumber SQL.=. (fromIntegral $ blockDataNumber (blockBlockData b)) ])
 --                    lst
 
-constructBlock :: (MonadIO m) => [Transaction] -> SqlPersistT m Block
-constructBlock txs = do
-  parentE <- getBestBlock
+constructBlock :: (MonadIO m) => Entity Block -> [Transaction] -> SqlPersistT m Block
+constructBlock parentE txs = do
   let parent = entityVal parentE
       parentData = blockBlockData parent
   parentHash:_ <- select $ from $ \bdr -> do

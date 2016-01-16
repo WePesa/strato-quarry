@@ -50,15 +50,13 @@ library
                        blockapps-util
   exposed-modules:     Blockchain.Quarry
                        Blockchain.Quarry.Flags
-                       Blockchain.Quarry.BlockConstruction
                        Blockchain.Quarry.SQL.Simple
                        Blockchain.Quarry.SQL.Persist
                        Blockchain.Quarry.SQL.Conn
-  other-modules:       Wrapper
-                       BlockConstruction
+  other-modules:       BlockConstruction
                        PersistSQL
                        SQLMonad
                        SimpleSQL
                        Debug
-  ghc-options:         -Wall -O2
+  ghc-options:         -Wall -O2 -fno-warn-unused-do-bind
   hs-source-dirs:      lib

@@ -3,12 +3,9 @@
 
 import Blockchain.EthConf
 import Blockchain.Quarry
-import Blockchain.Quarry.BlockConstruction
 import Blockchain.Quarry.Flags ()
 import Blockchain.Quarry.SQL.Conn
 import Control.Monad
-import Control.Monad.IO.Class
-import Control.Monad.Trans.State
 import HFlags
 import System.IO
 
@@ -19,8 +16,8 @@ main = do
   hSetBuffering stderr NoBuffering
   
   runConnT $ do
-    liftIO $ putStrLn "Creating a seed block"
-    seedDBBlock <- asPersistTransaction makeNewBlock
-    liftIO $ putStrLn "Creating triggers and listeners"
+    asPersistTransaction makeNewBlock
     asSimpleTransaction setupTriggers
-    evalStateT (forever waitMakeBlockState) seedDBBlock
+    forever $ do
+      waitNotification
+      asPersistTransaction makeNewBlock
