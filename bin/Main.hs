@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances, TemplateHaskell #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 
-import Blockchain.EthConf
+import Blockchain.EthConf ()
 import Blockchain.Quarry
 import Blockchain.Quarry.Flags ()
 import Blockchain.Quarry.SQL.Conn

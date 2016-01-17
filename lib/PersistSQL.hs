@@ -22,14 +22,6 @@ import Debug
 
 type BlockIds = (Key Block, Key BlockDataRef)
 
-deleteBlockQ' :: (MonadIO m) => BlockIds -> SqlPersistT m ()
-deleteBlockQ' (bId, bdId) = do
-  delete $ from $ \t -> where_ (t ^. RawTransactionBlockId ==. val bId)
-  delete $ from $ \p -> where_ (p ^. UnprocessedBlockId ==. val bId)
-  delete $ from $ \b -> where_ (b ^. BlockDataRefId ==. val bdId)
-  delete $ from $ \b -> where_ (b ^. BlockId ==. val bId)
-  return ()
-
 deleteBlockQ :: (MonadIO m) => BlockIds -> SqlPersistT m ()
 deleteBlockQ (bId, bdId) = do
   delete $ from $ \p -> where_ (p ^. UnprocessedBlockId ==. val bId)
