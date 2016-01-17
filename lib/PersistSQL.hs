@@ -27,6 +27,7 @@ deleteBlockQ (bId, bdId) = do
   update $ \rawTX -> do
     set rawTX [RawTransactionBlockId =. val (toSqlKey $ -1)]
     where_ (rawTX ^. RawTransactionBlockId ==. val bId)
+  delete $ from $ \r -> where_ (r ^. BlockTransactionBlockId ==. val bId)
   delete $ from $ \p -> where_ (p ^. UnprocessedBlockId ==. val bId)
   delete $ from $ \b -> where_ (b ^. BlockDataRefId ==. val bdId)
   delete $ from $ \b -> where_ (b ^. BlockId ==. val bId)
