@@ -43,30 +43,6 @@ makeNewBlock = do
   return b
   where putBlock x = lift $ runResourceT $ head <$> putBlocks [x] True
 
-{- Proposed alternative definition of putBlock, for blockapps-data -}
-
--- putBlock :: (MonadIO m) =>
---             Block -> E.SqlPersistT m (Key Block, Key BlockDataRef)
--- putBlock b = do
---   blkId <- SQL.insert $ b
---   toInsert <- blk2BlkDataRef b blkId
---   time <- liftIO getCurrentTime
---   mapM_ (insertOrUpdate b blkId) ((map (\tx -> txAndTime2RawTX tx blkId (blockDataNumber (blockBlockData b)) time)  (blockReceiptTransactions b)))
---   blkDataRefId <- SQL.insert $ toInsert
---   _ <- SQL.insert $ Unprocessed blkId
---   return $ (blkId, blkDataRefId)
-
---   where insertOrUpdate b blkid rawTX  = do
---           (txId :: [Entity RawTransaction]) <- SQL.selectList [ RawTransactionTxHash SQL.==. (rawTransactionTxHash rawTX )] [ ]
---           case txId of
---             [] -> do
---               _ <- SQL.insert rawTX
---               return ()
---             lst -> mapM_ (\t -> SQL.update (SQL.entityKey t)
---                                 [ RawTransactionBlockId SQL.=. blkid,
---                                   RawTransactionBlockNumber SQL.=. (fromIntegral $ blockDataNumber (blockBlockData b)) ])
---                    lst
-
 constructBlock :: (MonadIO m) => Entity Block -> [Transaction] -> SqlPersistT m Block
 constructBlock parentE txs = do
   let parent = entityVal parentE
