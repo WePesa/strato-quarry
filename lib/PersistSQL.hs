@@ -108,12 +108,3 @@ getBestBlock = do
   head <$> (select $ from $ \b -> do
                where_ (b ^. BlockId ==. val bId)
                return b)
-
-getNewTransactions :: (MonadIO m) => SqlPersistT m [Transaction]
-getNewTransactions = do
-  rawtxEs <-
-    select $
-    from $ \rawtx -> do
-      where_ (rawtx ^. RawTransactionBlockNumber ==. val (-1))
-      return rawtx
-  return $ map (rawTX2TX . entityVal) rawtxEs
