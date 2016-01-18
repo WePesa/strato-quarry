@@ -30,7 +30,7 @@ makeNewBlock = do
   b <- constructBlock newBest txs
   if not . null $ txs
     then do
-      bids <- putBlock b
+      putBlock b
       debugPrints [
         startDebugBlock, "Inserted block ", show $ blockDataNumber $ blockBlockData b,
         startDebugBlockLine, "Parent hash: ", showHash $ blockDataParentHash $ blockBlockData b,

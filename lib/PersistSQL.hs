@@ -48,8 +48,9 @@ getGreenTXs blockE = do
   earliest:_ <- do
     txs <-
       select $
-      from $ \rawTX -> do
-        where_ (rawTX ^. RawTransactionBlockId ==. val (entityKey blockE))
+      from $ \(rawTX `InnerJoin` blocktx) -> do
+        on $ (blocktx ^. BlockTransactionTransaction ==. rawTX ^. RawTransactionId)
+          &&.(blocktx ^. BlockTransactionBlockId ==. val (entityKey blockE))
         orderBy [asc $ rawTX ^. RawTransactionTimestamp]
         limit 1
         return rawTX
