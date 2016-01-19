@@ -40,8 +40,11 @@ runConnT cx =
 
 asSimpleTransaction :: [String] -> ConnT ()
 asSimpleTransaction ss = do
+  liftIO $ putStrLn $ "Running simpleConn"
   sConn <- simpleConn <$> ask
-  let as = mapM_ (execute_ sConn . Query . pack) ss  
+  let as = mapM_ (\s -> do {liftIO $ putStrLn $ "Running line " ++ s; (execute_ sConn . Query . pack) s }) ss
+  --let as = mapM_ (execute_ sConn . Query . pack) ss  
+  liftIO $ putStrLn $ "Running withTransaction"
   _ <- liftIO $ withTransaction sConn as
   return ()
 
