@@ -34,7 +34,6 @@ library
                        persistent,
                        persistent-postgresql,
                        postgresql-simple,
-                       blockapps-data-db,
                        blockapps-data,
                        merkle-patricia-db,
                        ethereum-rlp,
