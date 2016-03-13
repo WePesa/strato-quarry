@@ -25,7 +25,6 @@ type BlockIds = (Key Block, Key BlockDataRef)
 deleteBlockQ :: (MonadIO m) => BlockIds -> SqlPersistT m ()
 deleteBlockQ (bId, bdId) = do
   delete $ from $ \r -> where_ (r ^. BlockTransactionBlockId ==. val bId)
-  delete $ from $ \p -> where_ (p ^. UnprocessedBlockId ==. val bId)
   delete $ from $ \b -> where_ (b ^. BlockDataRefId ==. val bdId)
   delete $ from $ \b -> where_ (b ^. BlockId ==. val bId)
   return ()
