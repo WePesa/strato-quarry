@@ -4,6 +4,7 @@ module PersistSQL where
 
 import Blockchain.Data.BlockDB
 import Blockchain.Data.DataDefs
+import Blockchain.Data.Extra
 import Blockchain.Data.Transaction
 import Blockchain.Database.MerklePatricia ()
 
@@ -99,8 +100,12 @@ getGreenTXs blockE = do
 
 getBestBlock :: (MonadIO m) => SqlPersistT m (Entity Block)
 getBestBlock = do
-  s <- getJust (ExtraKey "bestBlock")
-  let (bId, _::Integer) = read $ extraValue s
-  head <$> (select $ from $ \b -> do
-               where_ (b ^. BlockId ==. val bId)
-               return b)
+    (bhash, _) <- getBestIndexBlockInfoQ
+    blockE:_ <-
+      select $
+      from $ \(b `InnerJoin` bdr) -> do
+        on $ (bdr ^. BlockDataRefHash ==. val bhash) &&.
+             (bdr ^. BlockDataRefBlockId ==. b ^. BlockId)
+        return b
+    return blockE
+
