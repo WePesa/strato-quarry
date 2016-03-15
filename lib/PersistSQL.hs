@@ -100,12 +100,6 @@ getGreenTXs blockE = do
 
 getBestBlock :: (MonadIO m) => SqlPersistT m (Entity Block)
 getBestBlock = do
-    (bhash, _) <- getBestIndexBlockInfoQ
-    blockE:_ <-
-      select $
-      from $ \(b `InnerJoin` bdr) -> do
-        on $ (bdr ^. BlockDataRefHash ==. val bhash) &&.
-             (bdr ^. BlockDataRefBlockId ==. b ^. BlockId)
-        return b
-    return blockE
-
+    bid <- getBestIndexBlockInfoQ
+    b <- getJust bid
+    return $ Entity bid b

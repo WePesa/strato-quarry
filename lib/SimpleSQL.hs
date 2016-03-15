@@ -17,11 +17,13 @@ createTriggerFunction func notify =
   " return null;\n" ++
   "end$$"
 
-createTrigger :: String -> String -> String -> String -> String
-createTrigger name event table func =
+createTrigger :: String -> String -> String -> String -> String -> Maybe String -> String
+createTrigger name event table func scope condM =
   "create trigger " ++ name ++
   " after " ++ event ++ " on " ++ table ++
-  " for each statement execute procedure " ++ func ++ "()"  
+  " for each " ++ scope ++
+  maybe "" (\s -> " when (" ++ s ++ ")") condM ++
+  " execute procedure " ++ func ++ "()"  
 
 listenTrigger :: String -> String
 listenTrigger name = "listen " ++ show name
@@ -34,8 +36,8 @@ setupTriggers = [
   clearTrigger bestName bestTable,
   createTriggerFunction txName txName,
   createTriggerFunction bestName bestName,
-  createTrigger txName txEvent txTable txName,
-  createTrigger bestName bestEvent bestTable bestName,
+  createTrigger txName txEvent txTable txName txScope txCond,
+  createTrigger bestName bestEvent bestTable bestName bestScope bestCond,
   listenTrigger txName,
   listenTrigger bestName
   ]
@@ -43,6 +45,8 @@ setupTriggers = [
     txName = show QuarryNewTX  ; bestName = show QuarryBestBlock
     txTable = "raw_transaction"; bestTable = "extra"
     txEvent = "insert"         ; bestEvent = "update"
+    txScope = "statement"      ; bestScope = "row"
+    txCond = Nothing           ; bestCond = Just $ "new.the_key = 'bestIndexBlock'"
 
 waitNotifyData :: ConnT NotifyChannel
 waitNotifyData = do
