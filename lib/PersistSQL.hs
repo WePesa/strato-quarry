@@ -30,13 +30,17 @@ deleteBlockQ (bId, bdId) = do
   delete $ from $ \b -> where_ (b ^. BlockId ==. val bId)
   return ()
 
-getSiblings :: (MonadIO m) => Block -> SqlPersistT m [BlockData]
-getSiblings Block{blockBlockData = BlockData{blockDataParentHash = pHash}} = do
+getSiblings :: (MonadIO m) => Entity Block -> SqlPersistT m [BlockData]
+getSiblings bE = do
+  let b = entityVal bE
+      bid = entityKey bE
+      pHash = blockDataParentHash $ blockBlockData b
   blocks <-
     select $
     from $ \(block `InnerJoin` blockDR) -> do
       on (blockDR ^. BlockDataRefBlockId ==. block ^. BlockId &&.
-          blockDR ^. BlockDataRefParentHash ==. val pHash)
+          blockDR ^. BlockDataRefParentHash ==. val pHash &&.
+          block ^. BlockId !=. val bid)
       return block
   return $ map (blockBlockData . entityVal) blocks
 

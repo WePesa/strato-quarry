@@ -48,7 +48,7 @@ constructBlock parentE txs = do
   parentHash:_ <- select $ from $ \bdr -> do
     where_ (bdr ^. BlockDataRefBlockId ==. val (entityKey parentE))
     return $ bdr ^. BlockDataRefHash
-  uncles <- getSiblings parent
+  uncles <- getSiblings parentE
   time <- liftIO getCurrentTime
   return $ Block {
     blockBlockUncles = uncles,
