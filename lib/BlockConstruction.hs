@@ -9,6 +9,7 @@ import Blockchain.Data.Transaction
 import Blockchain.Database.MerklePatricia hiding (Key)
 import Blockchain.EthConf
 import Blockchain.SHA
+import Blockchain.DB.SQLDB
 
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
@@ -22,14 +23,14 @@ import Database.Persist.Sql ()
 import PersistSQL
 import Debug
 
-makeNewBlock :: (MonadIO m) => SqlPersistT m Block
+makeNewBlock :: (HasSQLDB (ResourceT m), MonadBaseControl IO m, MonadIO m) => SqlPersistT m Block
 makeNewBlock = do
   newBest <- getBestBlock
   txs <- getGreenTXs newBest
   b <- constructBlock newBest txs
   if not . null $ txs
     then do
-      produceBlocks [b]
+      lift $ runResourceT $ produceBlocks [b]
       debugPrints [
         startDebugBlock, "Inserted block ", show $ blockDataNumber $ blockBlockData b,
         startDebugBlockLine, "Parent hash: ", showHash $ blockDataParentHash $ blockBlockData b,
