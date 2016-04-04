@@ -28,18 +28,17 @@ makeNewBlock = do
   newBest <- getBestBlock
   txs <- getGreenTXs newBest
   b <- constructBlock newBest txs
-  if not . null $ txs
-    then do
-      lift $ runResourceT $ produceBlocks [b]
-      debugPrints [
-        startDebugBlock, "Inserted block ", show $ blockDataNumber $ blockBlockData b,
-        startDebugBlockLine, "Parent hash: ", showHash $ blockDataParentHash $ blockBlockData b,
-        startDebugBlockLine, "(Fake) hash: ", showHash $ blockHash b,
-        startDebugBlockLine, "Including transactions: ", showTXHashes b,
-        endDebugBlock
-        ]
-    else do
-      debugPrint "Empty block; not committing\n"
+  if (lazyBlocks $ quarryConfig $ ethConf) && null txs
+  then debugPrint "Empty block; not committing\n"
+  else do
+    lift $ runResourceT $ produceBlocks [b]
+    debugPrints [
+      startDebugBlock, "Inserted block ", show $ blockDataNumber $ blockBlockData b,
+      startDebugBlockLine, "Parent hash: ", showHash $ blockDataParentHash $ blockBlockData b,
+      startDebugBlockLine, "(Fake) hash: ", showHash $ blockHash b,
+      startDebugBlockLine, "Including transactions: ", showTXHashes b,
+      endDebugBlock
+      ]
   return b
 
 constructBlock :: (MonadIO m) => Entity Block -> [Transaction] -> SqlPersistT m Block
