@@ -3,6 +3,7 @@
 module BlockConstruction where
 
 import Blockchain.Data.BlockDB
+import Blockchain.Data.BlockOffset
 import Blockchain.Data.DataDefs
 import Blockchain.Data.RLP
 import Blockchain.Data.Transaction
@@ -22,6 +23,7 @@ import Database.Persist.Sql ()
 
 import PersistSQL
 import Debug
+import Numeric
 
 makeNewBlock :: (HasSQLDB (ResourceT m), MonadBaseControl IO m, MonadIO m) => SqlPersistT m Block
 makeNewBlock = do
@@ -30,8 +32,13 @@ makeNewBlock = do
   b <- constructBlock newBest txs
   if (lazyBlocks $ quarryConfig $ ethConf) && null txs
   then debugPrint "Empty block; not committing\n"
-  else do
-    lift $ runResourceT $ produceBlocks [b]
+  else lift $ runResourceT $ do
+    existingBlocks <- getBlockOffsetsForHashes [blockHash b]
+    if null existingBlocks
+      then do
+        produceBlocks [b]
+        return ()
+      else return ()
     debugPrints [
       startDebugBlock, "Inserted block ", show $ blockDataNumber $ blockBlockData b,
       startDebugBlockLine, "Parent hash: ", showHash $ blockDataParentHash $ blockBlockData b,
@@ -56,7 +63,7 @@ constructBlock parentE txs = do
     blockBlockData = BlockData {
       blockDataParentHash = unValue parentHash,
       blockDataUnclesHash = hash . rlpSerialize . RLPArray $ map rlpEncode uncles,
-      blockDataCoinbase = fromIntegral $ coinbaseAddress $ quarryConfig ethConf,
+      blockDataCoinbase = fromInteger $ fst $ head $ readHex $ coinbaseAddress $ quarryConfig ethConf,
       blockDataStateRoot = SHAPtr "",
       blockDataTransactionsRoot = emptyTriePtr,
       blockDataReceiptsRoot = emptyTriePtr,
