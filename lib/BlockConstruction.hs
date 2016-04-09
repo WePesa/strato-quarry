@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
+{-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
 module BlockConstruction where
 
