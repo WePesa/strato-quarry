@@ -12,6 +12,7 @@ import Blockchain.Database.MerklePatricia hiding (Key)
 import Blockchain.EthConf
 import Blockchain.SHA
 import Blockchain.DB.SQLDB
+import Blockchain.Verification
 
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
@@ -63,11 +64,11 @@ constructBlock parentE txs = do
     blockReceiptTransactions = txs,
     blockBlockData = BlockData {
       blockDataParentHash = unValue parentHash,
-      blockDataUnclesHash = hash . rlpSerialize . RLPArray $ map rlpEncode uncles,
       blockDataCoinbase = fromInteger $ coinbaseAddress $ quarryConfig ethConf,
+      blockDataUnclesHash = ommersVerificationValue uncles,
       blockDataStateRoot = SHAPtr "",
-      blockDataTransactionsRoot = emptyTriePtr,
-      blockDataReceiptsRoot = emptyTriePtr,
+      blockDataTransactionsRoot = transactionsVerificationValue txs,
+      blockDataReceiptsRoot = receiptsVerificationValue (),
       blockDataLogBloom =
         "0000000000000000000000000000000000000000000000000000000000000000",
       blockDataDifficulty =
