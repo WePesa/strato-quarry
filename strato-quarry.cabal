@@ -18,6 +18,7 @@ cabal-version:       >=1.10
 executable strato-quarry
   main-is:             Main.hs
   build-depends:       base >=4.8 && <4.9,
+                       blockapps-data,
                        strato-conf,
                        strato-quarry,
                        transformers,

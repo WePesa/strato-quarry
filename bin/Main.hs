@@ -2,6 +2,7 @@
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-unused-do-bind #-}
 
 import Blockchain.EthConf ()
+import Blockchain.Stream.VMEvent
 import Blockchain.Quarry
 import Blockchain.Quarry.Flags ()
 import Blockchain.Quarry.SQL.Conn
@@ -20,4 +21,4 @@ main = do
     asSimpleTransaction setupTriggers
     forever $ do
       waitNotification
-      asPersistTransaction makeNewBlock
+      produceVMEvents [NewUnminedBlockAvailable]
