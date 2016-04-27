@@ -6,7 +6,6 @@ module BlockConstruction where
 import Blockchain.Data.BlockDB
 import Blockchain.Data.BlockOffset
 import Blockchain.Data.DataDefs
-import Blockchain.Data.RLP
 import Blockchain.Data.Transaction
 import Blockchain.Database.MerklePatricia hiding (Key)
 import Blockchain.EthConf
@@ -16,7 +15,6 @@ import Blockchain.Verification
 
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Resource
 
 import Data.Time.Clock
 
@@ -27,14 +25,14 @@ import PersistSQL
 import Debug
 import Numeric
 
-makeNewBlock :: (HasSQLDB (ResourceT m), MonadBaseControl IO m, MonadIO m) => SqlPersistT m Block
+makeNewBlock :: (HasSQLDB m, MonadIO m) => SqlPersistT m Block
 makeNewBlock = do
   newBest <- getBestBlock
   txs <- getGreenTXs newBest
   b <- constructBlock newBest txs
   if (lazyBlocks $ quarryConfig $ ethConf) && null txs
   then debugPrint "Empty block; not committing\n"
-  else lift $ runResourceT $ do
+  else lift $ do
     existingBlocks <- getBlockOffsetsForHashes [blockHash b]
     if null existingBlocks
       then do
