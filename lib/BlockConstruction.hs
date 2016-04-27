@@ -10,6 +10,7 @@ import Blockchain.Data.Transaction
 import Blockchain.Database.MerklePatricia hiding (Key)
 import Blockchain.EthConf
 import Blockchain.SHA
+import Blockchain.Stream.VMEvent
 import Blockchain.DB.SQLDB
 import Blockchain.Verification
 
@@ -36,7 +37,7 @@ makeNewBlock = do
     existingBlocks <- getBlockOffsetsForHashes [blockHash b]
     if null existingBlocks
       then do
-        produceBlocks [b]
+        produceVMEvents [ChainBlock b]
         return ()
       else return ()
     debugPrints [
