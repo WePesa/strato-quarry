@@ -26,28 +26,24 @@ import PersistSQL
 import Debug
 import Numeric
 
-makeNewBlock :: (HasSQLDB m, MonadIO m) => SqlPersistT m Block
+makeNewBlock :: (MonadIO m) => SqlPersistT m (Maybe Block)
 makeNewBlock = do
   newBest <- getBestBlock
   txs <- getGreenTXs newBest
   b <- constructBlock newBest txs
   if (lazyBlocks $ quarryConfig $ ethConf) && null txs
-  then debugPrint "Empty block; not committing\n"
-  else lift $ do
-    existingBlocks <- getBlockOffsetsForHashes [blockHash b]
-    if null existingBlocks
-      then do
-        produceVMEvents [ChainBlock b]
-        return ()
-      else return ()
+  then do
+    debugPrint "Empty block; not creating\n"
+    return Nothing
+  else do
     debugPrints [
-      startDebugBlock, "Inserted block ", show $ blockDataNumber $ blockBlockData b,
+      startDebugBlock, "Creating block ", show $ blockDataNumber $ blockBlockData b,
       startDebugBlockLine, "Parent hash: ", showHash $ blockDataParentHash $ blockBlockData b,
       startDebugBlockLine, "(Fake) hash: ", showHash $ blockHash b,
       startDebugBlockLine, "Including transactions: ", showTXHashes b,
       endDebugBlock
       ]
-  return b
+    return $ Just b
 
 constructBlock :: (MonadIO m) => Entity Block -> [Transaction] -> SqlPersistT m Block
 constructBlock parentE txs = do
