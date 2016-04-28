@@ -20,5 +20,5 @@ main = do
     asPersistTransaction makeNewBlock
     asSimpleTransaction setupTriggers
     forever $ do
-      waitNotification
       produceVMEvents [NewUnminedBlockAvailable]
+      waitNotification
