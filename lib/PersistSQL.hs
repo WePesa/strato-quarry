@@ -87,6 +87,7 @@ getGreenTXs blockE = do
     select $
     from $ \rawTX -> do
       where_ $ (rawTX ^. RawTransactionTimestamp >. val txStartTime)
+      orderBy [asc $ rawTX ^. RawTransactionTimestamp]
       return $ rawTX
   debugPrints $ "All recent transactions: \n":
     map (\tx -> "  TX hash: " ++ (showHash $ transactionHash tx) ++ "\n") alltxs
