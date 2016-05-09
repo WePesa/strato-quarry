@@ -1,6 +1,9 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module SimpleSQL where
 
 import Control.Monad.IO.Class
+import Control.Monad.Logger
 import Data.ByteString.Char8 (unpack)
 import Database.PostgreSQL.Simple.Notification
 import SQLMonad
@@ -50,6 +53,6 @@ setupTriggers = [
 
 waitNotifyData :: ConnT NotifyChannel
 waitNotifyData = do
-  liftIO $ putStrLn "Waiting for the next notification"
+  logInfoN "Waiting for the next notification"
   Notification {notificationChannel = c} <- waitNotification
   return $ read $ unpack c

@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
 module SQLMonad where
 
 import Blockchain.DB.SQLDB
@@ -18,12 +18,12 @@ data SQLConns = SQLConns {
   persistPool :: ConnectionPool
   }
 
-type ConnT = ReaderT SQLConns (NoLoggingT (ResourceT IO))
+type ConnT = ReaderT SQLConns (NoLoggingT (ResourceT (LoggingT IO)))
 
 instance HasSQLDB ConnT where
   getSQLDB = persistPool <$> ask
 
-runConnT :: ConnT a -> IO a
+runConnT :: ConnT a -> LoggingT IO a
 runConnT conn =
   let cs = postgreSQLConnectionString $ sqlConfig ethConf
   in runResourceT $ runNoLoggingT $ do
@@ -39,11 +39,11 @@ runConnT conn =
 
 asSimpleTransaction :: [String] -> ConnT ()
 asSimpleTransaction ss = do
-  liftIO $ putStrLn $ "Running simpleConn"
+  logInfoN "Running simpleConn"
   sConn <- simpleConn <$> ask
   let as = mapM_ (\s -> do {liftIO $ putStrLn $ "Running line " ++ s; (execute_ sConn . Query . pack) s }) ss
   --let as = mapM_ (execute_ sConn . Query . pack) ss  
-  liftIO $ putStrLn $ "Running withTransaction"
+  logInfoN "Running withTransaction"
   _ <- liftIO $ withTransaction sConn as
   return ()
 

@@ -19,8 +19,11 @@ executable strato-quarry
   main-is:             Main.hs
   build-depends:       base >=4.8 && <4.9,
                        blockapps-data,
+                       blockapps-util,
+                       monad-logger,
                        strato-conf,
                        strato-quarry,
+                       text,
                        transformers,
                        postgresql-simple,
                        hflags
@@ -37,9 +40,11 @@ library
                        postgresql-simple,
                        blockapps-data,
                        merkle-patricia-db,
+                       mtl,
                        ethereum-rlp,
                        blockapps-util,
                        containers,
+                       text,
                        time,
                        haskoin,
                        strato-conf,
