@@ -4,18 +4,14 @@
 module BlockConstruction where
 
 import Blockchain.Data.BlockDB
-import Blockchain.Data.BlockOffset
 import Blockchain.Data.DataDefs
 import Blockchain.Data.Transaction
 import Blockchain.Database.MerklePatricia hiding (Key)
 import Blockchain.EthConf
 import Blockchain.SHA
-import Blockchain.Stream.VMEvent
-import Blockchain.DB.SQLDB
 import Blockchain.Verification
 
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Class
 
 import Data.Time.Clock
 

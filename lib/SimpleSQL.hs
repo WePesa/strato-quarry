@@ -2,7 +2,6 @@
 
 module SimpleSQL where
 
-import Control.Monad.IO.Class
 import Control.Monad.Logger
 import Data.ByteString.Char8 (unpack)
 import Database.PostgreSQL.Simple.Notification

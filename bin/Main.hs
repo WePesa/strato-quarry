@@ -10,7 +10,6 @@ import Blockchain.Quarry.SQL.Conn
 import Control.Monad
 import Control.Monad.Logger
 import HFlags
-import System.IO
 
 lMain::LoggingT IO ()
 lMain = do
