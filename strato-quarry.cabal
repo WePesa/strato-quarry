@@ -59,6 +59,7 @@ library
                        Blockchain.Quarry.SQL.Simple
                        Blockchain.Quarry.SQL.Persist
                        Blockchain.Quarry.SQL.Conn
+                       Executable.StratoQuary
   other-modules:       BlockConstruction
                        PersistSQL
                        SQLMonad

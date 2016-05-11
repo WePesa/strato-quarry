@@ -20,7 +20,6 @@ import Database.Persist.Sql ()
 
 import PersistSQL
 import Debug
-import Numeric
 
 makeNewBlock :: (MonadIO m) => SqlPersistT m (Maybe Block)
 makeNewBlock = do
