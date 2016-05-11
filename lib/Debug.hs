@@ -11,7 +11,7 @@ import Control.Monad.IO.Class
 import Database.Persist.Sql
 
 debugPrint :: (MonadIO m) => String -> m ()
-debugPrint s = when flags_debug $ liftIO $ putStr s
+debugPrint s = when flags_qDebug $ liftIO $ putStr s
 
 debugPrints :: (MonadIO m) => [String] -> m ()
 debugPrints = debugPrint . concat
