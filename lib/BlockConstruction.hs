@@ -18,6 +18,8 @@ import Data.Time.Clock
 import Database.Esqueleto
 import Database.Persist.Sql ()
 
+import Numeric
+
 import PersistSQL
 import Debug
 
@@ -55,7 +57,7 @@ constructBlock parentE txs = do
     blockBlockData = BlockData {
       blockDataParentHash = unValue parentHash,
       blockDataUnclesHash = ommersVerificationValue uncles,
-      blockDataCoinbase = fromInteger $ coinbaseAddress $ quarryConfig ethConf,
+      blockDataCoinbase = fromInteger $ fst $ head $ readHex $ coinbaseAddress $ quarryConfig ethConf,
       blockDataStateRoot = StateRoot "",
       blockDataTransactionsRoot = transactionsVerificationValue txs,
       blockDataReceiptsRoot = receiptsVerificationValue (),
