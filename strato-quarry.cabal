@@ -53,17 +53,27 @@ library
                        hflags,
                        monad-logger,
                        esqueleto,
-                       blockapps-util
+                       blockapps-util,
+                       servant-server,
+                       wai,
+                       warp,
+                       aeson
+
   exposed-modules:     Blockchain.Quarry
                        Blockchain.Quarry.Flags
                        Blockchain.Quarry.SQL.Simple
                        Blockchain.Quarry.SQL.Persist
                        Blockchain.Quarry.SQL.Conn
                        Executable.StratoQuary
+                       API.StratoQuarry
   other-modules:       BlockConstruction
                        PersistSQL
                        SQLMonad
                        SimpleSQL
                        Debug
+                       API.Handler.Status
+                       API.Route.Status
+                       API.Model.Status
+
   ghc-options:         -Wall -O2 -fno-warn-unused-do-bind
   hs-source-dirs:      lib
