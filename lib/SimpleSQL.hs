@@ -48,7 +48,7 @@ setupTriggers = [
     txTable = "raw_transaction"; bestTable = "extra"
     txEvent = "insert"         ; bestEvent = "update"
     txScope = "statement"      ; bestScope = "row"
-    txCond = Nothing           ; bestCond = Just $ "new.the_key = 'bestIndexBlock'"
+    txCond = Nothing           ; bestCond = Just $ "new.the_key = 'bestBlock'"
 
 waitNotifyData :: ConnT NotifyChannel
 waitNotifyData = do
