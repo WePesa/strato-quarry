@@ -7,9 +7,9 @@ module API.Model.Status where
 
 import Data.Aeson.TH
 
-data Status = Status {
+data QuarryStatus = QuarryStatus {
     message :: String,
     timestamp :: String   -- replace with UTCTime
 } deriving (Eq, Show)
 
-$(deriveJSON defaultOptions ''Status)
+$(deriveJSON defaultOptions ''QuarryStatus)
