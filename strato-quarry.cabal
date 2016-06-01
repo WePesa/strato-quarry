@@ -54,10 +54,12 @@ library
                        monad-logger,
                        esqueleto,
                        blockapps-util,
+                       servant-client,
                        servant-server,
                        wai,
                        warp,
-                       aeson
+                       aeson,
+                       either                        
 
   exposed-modules:     Blockchain.Quarry
                        Blockchain.Quarry.Flags
@@ -66,6 +68,8 @@ library
                        Blockchain.Quarry.SQL.Conn
                        Executable.StratoQuary
                        API.StratoQuarry
+                       API.StratoQuarryClient
+
   other-modules:       BlockConstruction
                        PersistSQL
                        SQLMonad
