@@ -103,9 +103,13 @@ getGreenTXs blockE = do
                  (Set.fromList recentTXs)        
   return greenTXs
 
-getBestBlock :: (MonadIO m) => SqlPersistT m (Entity Block)
+getBestBlock :: (MonadIO m) => SqlPersistT m (Maybe (Entity Block))
 getBestBlock = do
+    (bhash, _) <- getBestBlockInfoQ
     bid <- getBestIndexBlockInfoQ
     b <- getJust bid
-    return $ Entity bid b 
+    
+    if bhash == blockHash b
+    then return $ Just $ Entity bid b 
+    else return Nothing
 

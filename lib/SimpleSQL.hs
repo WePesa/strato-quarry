@@ -1,10 +1,9 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module SimpleSQL where
 
 import Control.Monad.Logger
 import Data.ByteString.Char8 (unpack)
 import Database.PostgreSQL.Simple.Notification
+import qualified Data.Text as Text
 import SQLMonad
 
 clearTrigger :: String -> String -> String
@@ -39,7 +38,8 @@ setupTriggers = [
   createTriggerFunction txName txName,
   createTriggerFunction bestName bestName,
   createTrigger txName txEvent txTable txName txScope txCond,
-  createTrigger bestName bestEvent bestTable bestName bestScope bestCond,
+  createTrigger bestName bestEvent bestTable bestName bestScope (bestCond "bestBlock"),
+  createTrigger bestName bestEvent bestTable bestName bestScope (bestCond "bestIndexBlock"),
   listenTrigger txName,
   listenTrigger bestName
   ]
@@ -48,10 +48,10 @@ setupTriggers = [
     txTable = "raw_transaction"; bestTable = "extra"
     txEvent = "insert"         ; bestEvent = "update"
     txScope = "statement"      ; bestScope = "row"
-    txCond = Nothing           ; bestCond = Just $ "new.the_key = 'bestBlock'"
+    txCond = Nothing           ; bestCond n = Just $ "new.the_key = '" ++ n ++ "'"
 
 waitNotifyData :: ConnT NotifyChannel
 waitNotifyData = do
-  logInfoN "Waiting for the next notification"
+  logInfoN $ Text.pack "Waiting for the next notification"
   Notification {notificationChannel = c} <- waitNotification
   return $ read $ unpack c

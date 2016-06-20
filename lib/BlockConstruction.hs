@@ -11,9 +11,11 @@ import Blockchain.EthConf
 import Blockchain.SHA
 import Blockchain.Verification
 
+import Control.Monad
 import Control.Monad.IO.Class
 
 import Data.Time.Clock
+import qualified Data.Traversable as Trv
 
 import Database.Esqueleto
 import Database.Persist.Sql ()
@@ -24,15 +26,14 @@ import PersistSQL
 import Debug
 
 makeNewBlock :: (MonadIO m) => SqlPersistT m (Maybe Block)
-makeNewBlock = do
-  newBest <- getBestBlock
+makeNewBlock = after getBestBlock $ \newBest -> do
   txs <- getGreenTXs newBest
-  b <- constructBlock newBest txs
   if (lazyBlocks $ quarryConfig $ ethConf) && null txs
   then do
     debugPrint "Empty block; not creating\n"
     return Nothing
   else do
+    b <- constructBlock newBest txs 
     debugPrints [
       startDebugBlock, "Creating block ", show $ blockDataNumber $ blockBlockData b,
       startDebugBlockLine, "Parent hash: ", showHash $ blockDataParentHash $ blockBlockData b,
@@ -41,6 +42,10 @@ makeNewBlock = do
       endDebugBlock
       ]
     return $ Just b
+  where
+    after smx smf = do
+      mx <- smx
+      join <$> (Trv.sequence $ smf <$> mx)
 
 constructBlock :: (MonadIO m) => Entity Block -> [Transaction] -> SqlPersistT m Block
 constructBlock parentE txs = do
