@@ -39,7 +39,7 @@ setupTriggers = [
   createTriggerFunction bestName bestName,
   createTrigger txName txEvent txTable txName txScope txCond,
   createTrigger bestName bestEvent bestTable bestName bestScope (bestCond "bestBlock"),
-  createTrigger bestName bestEvent bestTable bestName bestScope (bestCond "bestIndexBlock"),
+  createTrigger (bestName ++ "Index") bestEvent bestTable bestName bestScope (bestCond "bestIndexBlock"),
   listenTrigger txName,
   listenTrigger bestName
   ]
