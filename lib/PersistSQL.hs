@@ -110,6 +110,12 @@ getBestBlock = do
     b <- getJust bid
     
     if bhash == blockHash b
-    then return $ Just $ Entity bid b 
-    else return Nothing
+    then do
+      debugPrints $ ["Best blocks agree: hash ", showHash bhash]
+      return $ Just $ Entity bid b 
+    else do
+      debugPrints $ ["Best blocks disagree: \n",
+                     " VM best block: ", showHash bhash,
+                     " Index best block: ", showHash $ blockHash b]
+      return Nothing
 
