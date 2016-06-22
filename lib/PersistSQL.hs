@@ -115,7 +115,7 @@ getBestBlock = do
       return $ Just $ Entity bid b 
     else do
       debugPrints $ ["Best blocks disagree: \n",
-                     " VM best block: ", showHash bhash,
-                     " Index best block: ", showHash $ blockHash b]
+                     " VM best block: ", showHash bhash, "\n",
+                     " Index best block: ", showHash $ blockHash b, "\n"]
       return Nothing
 
