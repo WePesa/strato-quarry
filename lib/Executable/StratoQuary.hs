@@ -16,7 +16,6 @@ import Control.Monad.Logger
 stratoQuary::LoggingT IO ()
 stratoQuary = do
   runConnT $ do
-    asPersistTransaction makeNewBlock
     asSimpleTransaction setupTriggers
     forever $ do
       produceVMEvents [NewUnminedBlockAvailable]

@@ -111,7 +111,7 @@ getBestBlock = do
     
     if bhash == blockHash b
     then do
-      debugPrints $ ["Best blocks agree: hash ", showHash bhash]
+      debugPrints $ ["Best blocks agree: hash ", showHash bhash, "\n"]
       return $ Just $ Entity bid b 
     else do
       debugPrints $ ["Best blocks disagree: \n",
