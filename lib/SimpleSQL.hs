@@ -35,6 +35,7 @@ setupTriggers :: [String]
 setupTriggers = [
   clearTrigger txName txTable,
   clearTrigger bestName bestTable,
+  clearTrigger (bestName ++ "Index") bestTable,
   createTriggerFunction txName txName,
   createTriggerFunction bestName bestName,
   createTrigger txName txEvent txTable txName txScope txCond,
