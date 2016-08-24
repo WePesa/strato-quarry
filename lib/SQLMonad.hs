@@ -44,7 +44,7 @@ asSimpleTransaction ss = do
   --let as = mapM_ (\s -> do {liftIO $ putStrLn $ "Running line " ++ s; (execute_ sConn . Query . pack) s }) ss
   let as = mapM_ (execute_ sConn . Query . pack) ss  
   logInfoN "Running withTransaction"
-  _ <- liftIO $ withTransaction sConn as
+  _ <- liftIO as
   return ()
 
 asPersistTransaction :: SqlPersistT ConnT a -> ConnT a
