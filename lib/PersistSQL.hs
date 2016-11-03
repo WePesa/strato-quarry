@@ -106,16 +106,28 @@ getGreenTXs blockE = do
 getBestBlock :: (MonadIO m) => SqlPersistT m (Maybe (Entity Block))
 getBestBlock = do
     (bhash, _) <- getBestBlockInfoQ
-    bid <- getBestIndexBlockInfoQ
-    b <- getJust bid
+    --bid <- getBestIndexBlockInfoQ
+    --b <- getJust bid
+
+    bEntityL <- 
+      select $ 
+      from $ \(block `InnerJoin` blockDR) -> do
+        on (blockDR ^. BlockDataRefHash ==. val bhash &&.
+            block ^. BlockId ==. blockDR ^. BlockDataRefBlockId)
+        return block
+
+    return $
+      if null bEntityL
+      then Nothing
+      else Just $ head bEntityL
     
-    if bhash == blockHash b
-    then do
-      debugPrints $ ["Best blocks agree: hash ", showHash bhash, "\n"]
-      return $ Just $ Entity bid b 
-    else do
-      debugPrints $ ["Best blocks disagree: \n",
-                     " VM best block: ", showHash bhash, "\n",
-                     " Index best block: ", showHash $ blockHash b, "\n"]
-      return Nothing
+    -- if bhash == blockHash b
+    -- then do
+    --   debugPrints $ ["Best blocks agree: hash ", showHash bhash, "\n"]
+    --   return $ Just $ Entity bid b 
+    -- else do
+    --   debugPrints $ ["Best blocks disagree: \n",
+    --                  " VM best block: ", showHash bhash, "\n",
+    --                  " Index best block: ", showHash $ blockHash b, "\n"]
+    --   return Nothing
 
