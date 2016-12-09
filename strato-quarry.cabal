@@ -53,17 +53,22 @@ library
                        hflags,
                        monad-logger,
                        esqueleto,
-                       blockapps-util
+                       blockapps-util,
+                       strato-sequencer,
+                       extra
   exposed-modules:     Blockchain.Quarry
                        Blockchain.Quarry.Flags
                        Blockchain.Quarry.SQL.Simple
                        Blockchain.Quarry.SQL.Persist
                        Blockchain.Quarry.SQL.Conn
                        Executable.StratoQuary
+                       Blockchain.Bagger
+                       Blockchain.Bagger.BaggerState
   other-modules:       BlockConstruction
                        PersistSQL
                        SQLMonad
                        SimpleSQL
                        Debug
+                       Blockchain.Bagger.TransactionList
   ghc-options:         -Wall -O2 -fno-warn-unused-do-bind
   hs-source-dirs:      lib
