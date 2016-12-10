@@ -9,7 +9,7 @@ import Blockchain.DB.HashDB
 
 import Blockchain.Data.Address
 import qualified Blockchain.Data.TransactionDef as TD
-import Blockchain.Data.DataDefs (AddressState(..))
+import Blockchain.Data.DataDefs (AddressState(..), blockDataStateRoot)
 import Blockchain.SHA
 import Blockchain.Sequencer.Event (OutputTx(..), OutputBlock(..), outputBlockHash)
 
@@ -29,6 +29,8 @@ class (Monad m, HasHashDB m, HasStateDB m, HasMemAddressStateDB m) => MonadBagge
 
     processNewBestBlock :: OutputBlock -> m ()
     processNewBestBlock ob = do
+        let thisStateRoot = (blockDataStateRoot $ obBlockData ob)
+        --setStateDBStateRoot thisStateRoot
         demoteUnexecutables
         promoteExecutables
         state <- getBaggerState
