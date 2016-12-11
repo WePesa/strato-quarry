@@ -6,6 +6,7 @@ module Blockchain.Bagger.TransactionList
  , trimBelowNonce
  , trimAboveCost
  , popSequential
+ , toList
  ) where
 
 import Blockchain.Data.Address
@@ -54,3 +55,6 @@ popSequential nonce tl = (reverse popped, M.fromList kept)
             if (elemNonce == lastNonce + 1)
                 then (elemNonce, (elemTx:popped'), kept')
                 else (lastNonce, popped', (e:kept'))
+
+toList :: TransactionList -> [OutputTx]
+toList = map snd . M.toList

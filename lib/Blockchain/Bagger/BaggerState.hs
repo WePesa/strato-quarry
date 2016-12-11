@@ -79,3 +79,7 @@ trimAboveCostFromPending a maxCost s@BaggerState{pending = p} =
 popSequentialFromQueued :: Address -> Integer -> BaggerState -> ([OutputTx], BaggerState)
 popSequentialFromQueued a nonce s@BaggerState{queued = q} =
     let (popped, newATL) = modifyATL (popSequential nonce) a q in (popped, s { queued = newATL })
+
+popAllPending :: BaggerState -> ([OutputTx], BaggerState)
+popAllPending s@BaggerState{pending = p} = (popped, s { pending = M.empty })
+    where popped = concat $ map (toList . snd) $ M.toList p

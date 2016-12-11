@@ -30,7 +30,7 @@ class (Monad m, HasHashDB m, HasStateDB m, HasMemAddressStateDB m) => MonadBagge
     processNewBestBlock :: OutputBlock -> m ()
     processNewBestBlock ob = do
         let thisStateRoot = (blockDataStateRoot $ obBlockData ob)
-        --setStateDBStateRoot thisStateRoot
+        setStateDBStateRoot thisStateRoot
         demoteUnexecutables
         promoteExecutables
         state <- getBaggerState
@@ -84,14 +84,15 @@ demoteUnexecutables = do
         putBaggerState state
         forM_ discardedByNonce removeFromSeen
 
-        let (discardedByCost, state) =  B.trimAboveCostFromQueued address addressBalance state
+        let (discardedByCost, state) = B.trimAboveCostFromPending address addressBalance state
         putBaggerState state
         forM_ discardedByCost removeFromSeen
 
-        -- requeue txs with too low balance
-        -- as potentially a Tx will cause them to have enough
-        -- balance during the mining of next block
-        forM_ discardedByCost addToQueued
+        -- drop all existing pending transactions, and try to see if they're
+        -- still valid to add to the (likely new) queued pool
+        let (remainingPending, state) = B.popAllPending state
+        putBaggerState state
+        forM_ remainingPending addToQueued
 
 wasSeen :: MonadBagger m => OutputTx -> m Bool
 wasSeen OutputTx{otHash=sha} = (M.member sha) . B.seen <$> getBaggerState
