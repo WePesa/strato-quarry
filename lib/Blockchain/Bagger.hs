@@ -8,6 +8,8 @@ import Blockchain.DB.HashDB
 
 
 import Blockchain.Data.Address
+import Blockchain.Database.MerklePatricia (StateRoot(..))
+import qualified Blockchain.Data.DataDefs as DD
 import qualified Blockchain.Data.TransactionDef as TD
 import Blockchain.Data.DataDefs (AddressState(..), blockDataStateRoot)
 import Blockchain.SHA
@@ -17,27 +19,41 @@ import qualified Blockchain.Bagger.BaggerState as B
 import Blockchain.Bagger.TransactionList
 
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.Maybe (isJust, fromJust)
 
+data RunAttemptError = CantFindStateRoot | GasLimitReached [OutputTx]
+
 class (Monad m, HasHashDB m, HasStateDB m, HasMemAddressStateDB m) => MonadBagger m where
-    getBaggerState :: m B.BaggerState
-    putBaggerState :: B.BaggerState -> m ()
-    {-# MINIMAL getBaggerState, putBaggerState #-}
+    getBaggerState    :: m B.BaggerState
+    putBaggerState    :: B.BaggerState -> m ()
+    runFromStateRoot  :: StateRoot -> [OutputTx] -> m (Either RunAttemptError StateRoot) -- todo: should this be (StateRoot, [accepted_/rejected_txs])?
+    {-# MINIMAL getBaggerState, putBaggerState, runFromStateRoot #-}
 
     addTransactionsToMempool :: [OutputTx] -> m ()
     addTransactionsToMempool ts = sequence_ (addToQueued <$> ts) >> promoteExecutables
 
     processNewBestBlock :: OutputBlock -> m ()
     processNewBestBlock ob = do
-        let thisStateRoot = (blockDataStateRoot $ obBlockData ob)
+        let thisBlockData   = obBlockData ob
+        let thisStateRoot   = DD.blockDataStateRoot thisBlockData
+        state <- getBaggerState
+        let newMiningCache = B.MiningCache { B.bestBlockSHA          = outputBlockHash ob
+                                           , B.bestBlockStateRoot    = thisStateRoot
+                                           , B.bestBlockNumber       = DD.blockDataNumber thisBlockData
+                                           , B.lastExecutedStateRoot = thisStateRoot
+                                           , B.promotedTransactions  = S.empty
+                                           }
+        putBaggerState $ state { B.miningCache = Just newMiningCache }
         setStateDBStateRoot thisStateRoot
         demoteUnexecutables
         promoteExecutables
-        state <- getBaggerState
-        putBaggerState $ state { B.bestBlockSHA = outputBlockHash ob }
 
     makeNewBlock :: m OutputBlock
     makeNewBlock = error "todo makeNewBlock"
+
+    setCalculateIntrinsicGas :: (Integer -> OutputTx -> Integer) -> m ()
+    setCalculateIntrinsicGas cig = putBaggerState =<< (\s -> s { B.calculateIntrinsicGas = cig }) <$> getBaggerState
 
 addToQueued :: MonadBagger m => OutputTx -> m ()
 addToQueued t = unlessM (wasSeen t) $ -- unlikely due to sequencer, but theoretically possible
@@ -113,3 +129,4 @@ removeFromSeen t = putBaggerState =<< ((B.removeFromSeen t) <$> getBaggerState)
 
 getAddressNonceAndBalance :: MonadBagger m => Address -> m (Integer, Integer)
 getAddressNonceAndBalance addr = (\aS -> (addressStateNonce aS, addressStateBalance aS)) <$> getAddressState addr
+

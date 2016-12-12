@@ -6,22 +6,35 @@ import Blockchain.Bagger.TransactionList
 import Blockchain.Sequencer.Event (OutputTx(..))
 
 import Blockchain.Data.Address
+import Blockchain.Database.MerklePatricia (StateRoot(..))
 import qualified Blockchain.Data.TransactionDef as TD
 import Blockchain.SHA
 
 import qualified Data.Map as M
+import qualified Data.Set as S
 
 type ATL = M.Map Address TransactionList
 
-data BaggerState = BaggerState { bestBlockSHA          :: SHA
+data MiningCache = MiningCache { bestBlockSHA          :: SHA
+                               , bestBlockStateRoot    :: StateRoot
+                               , bestBlockNumber       :: Integer
+                               , lastExecutedStateRoot :: StateRoot
+                               , promotedTransactions  :: S.Set OutputTx
+                               }
+
+data BaggerState = BaggerState { lastBlockNumber       :: Integer
+                               , miningCache           :: Maybe MiningCache
                                , pending               :: ATL -- TXs that are going in the next block
                                , queued                :: ATL -- TXs that are lingering in the pool
                                , seen                  :: M.Map SHA OutputTx
-                               , calculateIntrinsicGas :: OutputTx -> Integer -- fn that calculates intrinsic gas cost for a given Tx
+                               , calculateIntrinsicGas :: Integer -> OutputTx -> Integer -- fn that calculates intrinsic
+                                                                                         -- gas cost for a given Tx and
+                                                                                         -- block number
                                }
 
 defaultBaggerState :: BaggerState
-defaultBaggerState = BaggerState { bestBlockSHA          = SHA 0
+defaultBaggerState = BaggerState { lastBlockNumber       = 0
+                                 , miningCache           = Nothing
                                  , pending               = M.empty
                                  , queued                = M.empty
                                  , seen                  = M.empty
@@ -44,7 +57,8 @@ modifyATL f address atl = case (M.lookup address atl) of
             else (poppedTx, M.insert address newTL atl)
 
 calculateIntrinsicTxFee :: BaggerState -> (OutputTx -> Integer)
-calculateIntrinsicTxFee bs t@OutputTx{otBaseTx = bt} = (TD.transactionGasPrice bt) * ((calculateIntrinsicGas bs) t)
+calculateIntrinsicTxFee bs@BaggerState{lastBlockNumber=bn} t@OutputTx{otBaseTx = bt} =
+    (TD.transactionGasPrice bt) * ((calculateIntrinsicGas bs) bn t)
 
 addToPending :: OutputTx -> BaggerState -> (Maybe OutputTx, BaggerState)
 addToPending t s@BaggerState{pending = p} = let (oldTx, newATL) = (addToATL t p) in (oldTx, s { pending = newATL })
