@@ -2,7 +2,7 @@ module Blockchain.Bagger.BaggerState where
 
 import Control.Applicative (Alternative, empty)
 
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 import Blockchain.Bagger.TransactionList
@@ -19,6 +19,7 @@ type ATL = M.Map Address TransactionList
 data MiningCache = MiningCache { bestBlockSHA          :: SHA
                                , bestBlockHeader       :: DD.BlockData
                                , lastExecutedStateRoot :: StateRoot
+                               , remainingGas          :: Integer
                                , lastExecutedTxs       :: S.Set OutputTx
                                , promotedTransactions  :: S.Set OutputTx
                                }
@@ -44,6 +45,7 @@ defaultMiningCache :: MiningCache
 defaultMiningCache  = MiningCache { bestBlockSHA          = SHA $ fromIntegral 0
                                   , bestBlockHeader       = error "dont taze me bro"
                                   , lastExecutedStateRoot = blankStateRoot
+                                  , remainingGas          = 0
                                   , lastExecutedTxs       = S.empty
                                   , promotedTransactions  = S.empty
                                   }
@@ -65,7 +67,7 @@ modifyATL f address atl = case (M.lookup address atl) of
 
 calculateIntrinsicTxFee :: BaggerState -> (OutputTx -> Integer)
 calculateIntrinsicTxFee bs@BaggerState{ miningCache = MiningCache{ bestBlockHeader = bh } } t@OutputTx{otBaseTx = bt} =
-    (TD.transactionGasPrice bt) * ((calculateIntrinsicGas bs) (DD.blockDataNumber bh) t)
+    (TD.transactionGasPrice bt) * ((calculateIntrinsicGas bs) (DD.blockDataNumber bh + 1) t)
 
 addToPending :: OutputTx -> BaggerState -> (Maybe OutputTx, BaggerState)
 addToPending t s@BaggerState{pending = p} = let (oldTx, newATL) = (addToATL t p) in (oldTx, s { pending = newATL })

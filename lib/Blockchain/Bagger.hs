@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS -fprof-auto -fprof-cafs #-}
 module Blockchain.Bagger where
 
 import Control.Monad.Extra
@@ -28,13 +29,18 @@ import Blockchain.Bagger.TransactionList
 
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Blockchain.Format
+
+import Debug.Trace (traceIO)
+
 
 data RunAttemptError = CantFindStateRoot | GasLimitReached [OutputTx] deriving Show
 
-class (Monad m, HasHashDB m, HasStateDB m, HasMemAddressStateDB m) => MonadBagger m where
+class (Monad m, MonadIO m, HasHashDB m, HasStateDB m, HasMemAddressStateDB m) => MonadBagger m where
     getBaggerState    :: m B.BaggerState
     putBaggerState    :: B.BaggerState -> m ()
-    runFromStateRoot  :: StateRoot -> [OutputTx] -> m (Either RunAttemptError StateRoot) -- todo: should this be (StateRoot, [accepted_/rejected_txs])?
+    runFromStateRoot  :: StateRoot -> Integer -> DD.BlockData -> [OutputTx] -> m (Either RunAttemptError (Integer, StateRoot)) -- todo: should this be (StateRoot, [accepted_/rejected_txs])?
+    rewardCoinbases   :: StateRoot -> Address -> [Address] -> m StateRoot -- miner coinbase -> uncle coinbases -> stateRoot
     {-# MINIMAL getBaggerState, putBaggerState, runFromStateRoot #-}
 
     updateBaggerState :: (B.BaggerState -> B.BaggerState) -> m ()
@@ -42,22 +48,30 @@ class (Monad m, HasHashDB m, HasStateDB m, HasMemAddressStateDB m) => MonadBagge
 
     addTransactionsToMempool :: [OutputTx] -> m ()
     addTransactionsToMempool ts = do
+        liftIO $ traceIO "aTTM 1"
         existingStateDbStateRoot <- getStateRoot
-        stateRoot <- B.lastExecutedStateRoot . B.miningCache <$> getBaggerState
+        liftIO $ traceIO "aTTM 2"
+        stateRoot <- (B.lastExecutedStateRoot . B.miningCache) <$> getBaggerState
+        liftIO $ traceIO "aTTM 3"
         setStateDBStateRoot stateRoot
+        liftIO $ traceIO "aTTM 4"
         sequence_ (addToQueued <$> ts)
+        liftIO $ traceIO "aTTM 5"
         promoteExecutables
+        liftIO $ traceIO "aTTM 6"
         setStateDBStateRoot existingStateDbStateRoot
+        liftIO $ traceIO "aTTM 7"
 
     processNewBestBlock :: SHA -> DD.BlockData -> m ()
     processNewBestBlock blockHash bd = do
         existingStateDbStateRoot <- getStateRoot
-        let thisStateRoot   = DD.blockDataStateRoot bd
+        let thisStateRoot = DD.blockDataStateRoot bd
         state <- getBaggerState
         let newMiningCache = B.MiningCache { B.bestBlockSHA          = blockHash
                                            , B.bestBlockHeader       = bd
                                            , B.lastExecutedStateRoot = thisStateRoot
                                            , B.lastExecutedTxs       = S.empty
+                                           , B.remainingGas          = nextGasLimit $ DD.blockDataGasLimit bd
                                            , B.promotedTransactions  = S.empty
                                            }
         putBaggerState $ state { B.miningCache = newMiningCache }
@@ -75,25 +89,30 @@ class (Monad m, HasHashDB m, HasStateDB m, HasMemAddressStateDB m) => MonadBagge
         let lastExecLen = S.size lastExec
         let noCachedTxsCulled = lastExecLen == length [t | t <- S.toList lastExec, otHash t `M.member` seen']
         if noCachedTxsCulled
-            then if (S.null $ B.promotedTransactions cache)
-                then buildFromMiningCache
-                else do
-                    existingStateDbStateRoot <- getStateRoot
-                    let lastSR    = B.lastExecutedStateRoot cache
-                    let promoted  = B.promotedTransactions cache
-                    let promoted' = S.toList promoted
-                    run <- runFromStateRoot lastSR promoted'
-                    case run of
-                        Left e      -> error $ show e
-                        Right newSR -> do
-                            let unionLastExecAndPromoted = S.union lastExec promoted
-                            let newMiningCache = cache { B.lastExecutedStateRoot = newSR
-                                                       , B.lastExecutedTxs       = unionLastExecAndPromoted
-                                                       , B.promotedTransactions  = S.empty
-                                                       }
-                            updateBaggerState (\s -> s { B.miningCache = newMiningCache })
-                    setStateDBStateRoot existingStateDbStateRoot
-                    buildFromMiningCache
+            then if (S.null $ B.promotedTransactions cache) then buildFromMiningCache else do
+                existingStateDbStateRoot <- getStateRoot
+                time <- liftIO getCurrentTime
+                let lastSR          = B.lastExecutedStateRoot cache
+                let lastSHA         = B.bestBlockSHA cache
+                let lastHead        = B.bestBlockHeader cache
+                let promoted        = B.promotedTransactions cache
+                let promoted'       = S.toList promoted
+                let tempBlockHeader = buildNextBlockHeader lastHead lastSHA [] lastSR [] time
+                let remGas          = B.remainingGas cache
+                run <- runFromStateRoot lastSR remGas tempBlockHeader promoted'
+                case run of
+                    Left e                         -> error $ show e
+                    Right (newGas, newSR) -> do
+                        let unionLastExecAndPromoted = S.union lastExec promoted
+                        let newMiningCache = cache { B.lastExecutedStateRoot = newSR
+                                                   , B.remainingGas          = newGas
+                                                   , B.lastExecutedTxs       = unionLastExecAndPromoted
+                                                   , B.promotedTransactions  = S.empty
+                                                   }
+                        liftIO $ traceIO $ "incremental run :: (" ++ show newGas ++ ", " ++ format newSR ++ ")"
+                        updateBaggerState (\s -> s { B.miningCache = newMiningCache })
+                setStateDBStateRoot existingStateDbStateRoot
+                buildFromMiningCache
             else do -- some transactions which were cached have been evicted, need to recalculate entire block cache
                 let sha    = B.bestBlockSHA cache
                 let header = B.bestBlockHeader cache
@@ -105,7 +124,7 @@ class (Monad m, HasHashDB m, HasStateDB m, HasMemAddressStateDB m) => MonadBagge
     setCalculateIntrinsicGas cig = putBaggerState =<< (\s -> s { B.calculateIntrinsicGas = cig }) <$> getBaggerState
 
 addToQueued :: MonadBagger m => OutputTx -> m ()
-addToQueued t = unlessM (wasSeen t) $ -- unlikely due to sequencer, but theoretically possible
+addToQueued t = unlessM (wasSeen t) $
                     whenM (isValidForPool t) $ do
                         (toDiscard, newState) <- B.addToQueued t <$> getBaggerState
                         putBaggerState newState
@@ -114,28 +133,40 @@ addToQueued t = unlessM (wasSeen t) $ -- unlikely due to sequencer, but theoreti
 
 promoteExecutables :: MonadBagger m => m ()
 promoteExecutables = do
+    liftIO $ traceIO "promoteExecutables 1"
     state <- getBaggerState
     let queued' = M.keysSet $ B.queued state
     forM_ queued' $ \address -> do
+        liftIO $ traceIO "promoteExecutables 1a"
         (addressNonce, addressBalance) <- getAddressNonceAndBalance address
+        liftIO $ traceIO "promoteExecutables 2"
 
-        let (discardedByNonce, state) = B.trimBelowNonceFromQueued address addressNonce state
-        putBaggerState state
+        let (discardedByNonce, state') = B.trimBelowNonceFromQueued address addressNonce state
+        liftIO $ traceIO "promoteExecutables 2a"
+        putBaggerState state'
+        liftIO $ traceIO "promoteExecutables 2b"
         forM_ discardedByNonce removeFromSeen
+        liftIO $ traceIO "promoteExecutables 3"
 
-        let (discardedByCost, state) = B.trimAboveCostFromQueued address addressBalance state
-        putBaggerState state
+        let (discardedByCost, state'') = B.trimAboveCostFromQueued address addressBalance state'
+        liftIO $ traceIO "promoteExecutables 3a"
+        putBaggerState state''
+        liftIO $ traceIO "promoteExecutables 3b"
         forM_ discardedByCost removeFromSeen
+        liftIO $ traceIO "promoteExecutables 4"
 
-        let (readyToMine, state) = B.popSequentialFromQueued address addressNonce state
-        putBaggerState state
+        let (readyToMine, state''') = B.popSequentialFromQueued address addressNonce state''
+        liftIO $ traceIO "promoteExecutables 4a"
+        putBaggerState state'''
+        liftIO $ traceIO "promoteExecutables 4b"
         forM_ readyToMine promoteTx
+        liftIO $ traceIO "promoteExecutables 5"
 
 promoteTx :: MonadBagger m => OutputTx -> m ()
 promoteTx tx = do
     state <- getBaggerState
-    let (evicted, state) = B.addToPending tx state
-    putBaggerState state
+    let (evicted, state') = B.addToPending tx state
+    putBaggerState state'
     forM_ evicted removeFromSeen
     addToPromotionCache tx
 
@@ -146,18 +177,18 @@ demoteUnexecutables = do
     forM_ pending' $ \address -> do
         (addressNonce, addressBalance) <- getAddressNonceAndBalance address
 
-        let (discardedByNonce, state) = B.trimBelowNonceFromPending address addressNonce state
-        putBaggerState state
+        let (discardedByNonce, state') = B.trimBelowNonceFromPending address addressNonce state
+        putBaggerState state'
         forM_ discardedByNonce removeFromSeen
 
-        let (discardedByCost, state) = B.trimAboveCostFromPending address addressBalance state
-        putBaggerState state
+        let (discardedByCost, state'') = B.trimAboveCostFromPending address addressBalance state'
+        putBaggerState state''
         forM_ discardedByCost removeFromSeen
 
         -- drop all existing pending transactions, and try to see if they're
         -- still valid to add to the (likely new) queued pool
-        let (remainingPending, state) = B.popAllPending state
-        putBaggerState state
+        let (remainingPending, state''') = B.popAllPending state''
+        putBaggerState state'''
         forM_ remainingPending addToQueued
 
 wasSeen :: MonadBagger m => OutputTx -> m Bool
@@ -167,9 +198,11 @@ isValidForPool :: MonadBagger m => OutputTx -> m Bool
 isValidForPool t@OutputTx{otSigner=address, otBaseTx=bt} = do
     -- todo: is this everything that can be checked? be more pedantic and check for neg. balance, etc?
     state <- getBaggerState
+    let txNonce = TD.transactionNonce bt
     let txFee = B.calculateIntrinsicTxFee state t
     (addressNonce, addressBalance) <- getAddressNonceAndBalance address
-    return $ (addressNonce > (TD.transactionNonce bt)) && (addressBalance >= txFee)
+    --liftIO $ putStrLn $ "V4P: " ++ (show tup) ++ " vs (" ++ show txNonce ++ ", " ++ show txFee ++ ")"
+    return $ (addressNonce <= txNonce) && (addressBalance >= txFee)
 
 addToSeen :: MonadBagger m => OutputTx -> m ()
 addToSeen t = updateBaggerState (B.addToSeen t)
@@ -183,6 +216,10 @@ getAddressNonceAndBalance addr = (\aS -> (DD.addressStateNonce aS, DD.addressSta
 addToPromotionCache :: MonadBagger m => OutputTx -> m ()
 addToPromotionCache tx = updateBaggerState $ B.addToPromotionCache tx
 
+-- | Parent gas limit -> child gas limit
+nextGasLimit :: Integer -> Integer
+nextGasLimit g = g + q - (if d == 0 then 1 else 0) where (q,d) = g `quotRem` 1024
+
 buildFromMiningCache :: MonadBagger m => m OutputBlock
 buildFromMiningCache = do
     time <- liftIO $ getCurrentTime
@@ -192,31 +229,48 @@ buildFromMiningCache = do
     let parentHeader = B.bestBlockHeader cache
     let stateRoot    = B.lastExecutedStateRoot cache
     let txs          = S.toList $ B.lastExecutedTxs cache
+    let parentNum    = DD.blockDataNumber parentHeader
     let parentDiff   = DD.blockDataDifficulty parentHeader
-    let nextDiff     = BDB.nextDifficulty False (DD.blockDataNumber parentHeader) parentDiff (DD.blockDataTimestamp parentHeader) time
+    let parentTS     = DD.blockDataTimestamp parentHeader
+    let nextDiff     = BDB.nextDifficulty False parentNum parentDiff parentTS time
+    previousStateRoot <- getStateRoot
+    rewardedStateRoot <- rewardCoinbases stateRoot ourCoinbase []
+    setStateDBStateRoot previousStateRoot
     return OutputBlock { obOrigin = TO.Quarry
                        , obTotalDifficulty = parentDiff + nextDiff
                        , obBlockUncles = uncles
                        , obReceiptTransactions = txs
-                       , obBlockData = DD.BlockData {
-                             DD.blockDataParentHash       = parentHash
-                           , DD.blockDataUnclesHash       = V.ommersVerificationValue uncles
-                           , DD.blockDataCoinbase         = fromInteger . fst . head . readHex . Conf.coinbaseAddress . Conf.quarryConfig $ Conf.ethConf
-                           , DD.blockDataStateRoot        = stateRoot
-                           , DD.blockDataTransactionsRoot = V.transactionsVerificationValue (otBaseTx <$> txs)
-                           , DD.blockDataReceiptsRoot     = V.receiptsVerificationValue ()
-                           , DD.blockDataLogBloom         = "0000000000000000000000000000000000000000000000000000000000000000"
-                           , DD.blockDataDifficulty       = nextDiff
-                           , DD.blockDataNumber           = DD.blockDataNumber parentHeader + 1
-                           , DD.blockDataGasLimit         = let g     = DD.blockDataGasLimit parentHeader
-                                                                (q,d) = g `quotRem` 1024
-                                                                in g + q - (if d == 0 then 1 else 0)
-                           , DD.blockDataGasUsed = 0
-                           , DD.blockDataTimestamp = time
-                           , DD.blockDataExtraData = 0
-                           , DD.blockDataMixHash = SHA 0
-                           , DD.blockDataNonce = 5
-                           }
+                       , obBlockData = buildNextBlockHeader parentHeader parentHash uncles rewardedStateRoot txs time
                        }
 
+ourCoinbase :: Address
+ourCoinbase = fromInteger . fst . head . readHex . Conf.coinbaseAddress . Conf.quarryConfig $ Conf.ethConf
 
+buildNextBlockHeader :: DD.BlockData
+                     -> SHA
+                     -> [DD.BlockData]
+                     -> StateRoot
+                     -> [OutputTx]
+                     -> UTCTime
+                     -> DD.BlockData
+buildNextBlockHeader parentHeader parentHash uncles stateRoot txs time =
+    let parentDiff = DD.blockDataDifficulty parentHeader
+        parentNum  = DD.blockDataNumber parentHeader
+        parentTS   = DD.blockDataTimestamp parentHeader
+        nextDiff   = BDB.nextDifficulty False parentNum parentDiff parentTS time
+        in DD.BlockData { DD.blockDataParentHash       = parentHash
+                        , DD.blockDataUnclesHash       = V.ommersVerificationValue uncles
+                        , DD.blockDataCoinbase         = ourCoinbase
+                        , DD.blockDataStateRoot        = stateRoot
+                        , DD.blockDataTransactionsRoot = V.transactionsVerificationValue (otBaseTx <$> txs)
+                        , DD.blockDataReceiptsRoot     = V.receiptsVerificationValue ()
+                        , DD.blockDataLogBloom         = "0000000000000000000000000000000000000000000000000000000000000000"
+                        , DD.blockDataDifficulty       = nextDiff
+                        , DD.blockDataNumber           = parentNum + 1
+                        , DD.blockDataGasLimit         = nextGasLimit $ DD.blockDataGasLimit parentHeader
+                        , DD.blockDataGasUsed          = 0
+                        , DD.blockDataTimestamp        = time
+                        , DD.blockDataExtraData        = 0
+                        , DD.blockDataMixHash          = SHA 0
+                        , DD.blockDataNonce            = 5
+                        }

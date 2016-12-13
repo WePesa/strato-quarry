@@ -12,7 +12,7 @@ module Blockchain.Bagger.TransactionList
 import Blockchain.Data.Address
 import Blockchain.Data.TransactionDef
 import Blockchain.Sequencer.Event (OutputTx(..))
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
 
 type TransactionList = M.Map Integer OutputTx
 
