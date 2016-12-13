@@ -2,28 +2,28 @@ module Blockchain.Bagger.BaggerState where
 
 import Control.Applicative (Alternative, empty)
 
+import qualified Data.Map as M
+import qualified Data.Set as S
+
 import Blockchain.Bagger.TransactionList
 import Blockchain.Sequencer.Event (OutputTx(..))
 
 import Blockchain.Data.Address
-import Blockchain.Database.MerklePatricia (StateRoot(..))
+import Blockchain.Database.MerklePatricia (StateRoot(..), blankStateRoot)
+import qualified Blockchain.Data.DataDefs as DD
 import qualified Blockchain.Data.TransactionDef as TD
 import Blockchain.SHA
-
-import qualified Data.Map as M
-import qualified Data.Set as S
 
 type ATL = M.Map Address TransactionList
 
 data MiningCache = MiningCache { bestBlockSHA          :: SHA
-                               , bestBlockStateRoot    :: StateRoot
-                               , bestBlockNumber       :: Integer
+                               , bestBlockHeader       :: DD.BlockData
                                , lastExecutedStateRoot :: StateRoot
+                               , lastExecutedTxs       :: S.Set OutputTx
                                , promotedTransactions  :: S.Set OutputTx
                                }
 
-data BaggerState = BaggerState { lastBlockNumber       :: Integer
-                               , miningCache           :: Maybe MiningCache
+data BaggerState = BaggerState { miningCache           :: MiningCache
                                , pending               :: ATL -- TXs that are going in the next block
                                , queued                :: ATL -- TXs that are lingering in the pool
                                , seen                  :: M.Map SHA OutputTx
@@ -33,13 +33,20 @@ data BaggerState = BaggerState { lastBlockNumber       :: Integer
                                }
 
 defaultBaggerState :: BaggerState
-defaultBaggerState = BaggerState { lastBlockNumber       = 0
-                                 , miningCache           = Nothing
-                                 , pending               = M.empty
-                                 , queued                = M.empty
-                                 , seen                  = M.empty
-                                 , calculateIntrinsicGas = error "wyd bro"
-                                 }
+defaultBaggerState  = BaggerState { miningCache           = defaultMiningCache
+                                  , pending               = M.empty
+                                  , queued                = M.empty
+                                  , seen                  = M.empty
+                                  , calculateIntrinsicGas = error "wyd bro"
+                                  }
+
+defaultMiningCache :: MiningCache
+defaultMiningCache  = MiningCache { bestBlockSHA          = SHA $ fromIntegral 0
+                                  , bestBlockHeader       = error "dont taze me bro"
+                                  , lastExecutedStateRoot = blankStateRoot
+                                  , lastExecutedTxs       = S.empty
+                                  , promotedTransactions  = S.empty
+                                  }
 
 addToATL :: OutputTx -> ATL -> (Maybe OutputTx, ATL)
 addToATL t atl =
@@ -57,8 +64,8 @@ modifyATL f address atl = case (M.lookup address atl) of
             else (poppedTx, M.insert address newTL atl)
 
 calculateIntrinsicTxFee :: BaggerState -> (OutputTx -> Integer)
-calculateIntrinsicTxFee bs@BaggerState{lastBlockNumber=bn} t@OutputTx{otBaseTx = bt} =
-    (TD.transactionGasPrice bt) * ((calculateIntrinsicGas bs) bn t)
+calculateIntrinsicTxFee bs@BaggerState{ miningCache = MiningCache{ bestBlockHeader = bh } } t@OutputTx{otBaseTx = bt} =
+    (TD.transactionGasPrice bt) * ((calculateIntrinsicGas bs) (DD.blockDataNumber bh) t)
 
 addToPending :: OutputTx -> BaggerState -> (Maybe OutputTx, BaggerState)
 addToPending t s@BaggerState{pending = p} = let (oldTx, newATL) = (addToATL t p) in (oldTx, s { pending = newATL })
@@ -97,3 +104,7 @@ popSequentialFromQueued a nonce s@BaggerState{queued = q} =
 popAllPending :: BaggerState -> ([OutputTx], BaggerState)
 popAllPending s@BaggerState{pending = p} = (popped, s { pending = M.empty })
     where popped = concat $ map (toList . snd) $ M.toList p
+
+addToPromotionCache :: OutputTx -> BaggerState -> BaggerState
+addToPromotionCache tx s@BaggerState{ miningCache = mc@MiningCache{ promotedTransactions = pt } } =
+    let newPT = S.insert tx pt in s { miningCache = mc { promotedTransactions = newPT } }
