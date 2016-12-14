@@ -4,6 +4,7 @@ import Control.Applicative (Alternative, empty)
 
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
+import Data.Time.Clock
 
 import Blockchain.Bagger.TransactionList
 import Blockchain.Sequencer.Event (OutputTx(..))
@@ -22,6 +23,7 @@ data MiningCache = MiningCache { bestBlockSHA          :: SHA
                                , remainingGas          :: Integer
                                , lastExecutedTxs       :: [OutputTx]
                                , promotedTransactions  :: [OutputTx]
+                               , startTimestamp        :: UTCTime
                                }
 
 data BaggerState = BaggerState { miningCache           :: MiningCache
@@ -48,6 +50,7 @@ defaultMiningCache  = MiningCache { bestBlockSHA          = SHA $ fromIntegral 0
                                   , remainingGas          = 0
                                   , lastExecutedTxs       = []
                                   , promotedTransactions  = []
+                                  , startTimestamp        = error "dbaa"
                                   }
 
 addToATL :: OutputTx -> ATL -> (Maybe OutputTx, ATL)

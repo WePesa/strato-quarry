@@ -67,12 +67,14 @@ class (Monad m, MonadIO m, HasHashDB m, HasStateDB m, HasMemAddressStateDB m) =>
         existingStateDbStateRoot <- getStateRoot
         let thisStateRoot = DD.blockDataStateRoot bd
         state <- getBaggerState
+        time  <- liftIO $ getCurrentTime
         let newMiningCache = B.MiningCache { B.bestBlockSHA          = blockHash
                                            , B.bestBlockHeader       = bd
                                            , B.lastExecutedStateRoot = thisStateRoot
                                            , B.remainingGas          = nextGasLimit $ DD.blockDataGasLimit bd
                                            , B.lastExecutedTxs       = []
                                            , B.promotedTransactions  = []
+                                           , B.startTimestamp        = time
                                            }
         putBaggerState $ state { B.miningCache = newMiningCache }
         setStateDBStateRoot thisStateRoot
@@ -91,11 +93,11 @@ class (Monad m, MonadIO m, HasHashDB m, HasStateDB m, HasMemAddressStateDB m) =>
         if noCachedTxsCulled
             then if (null $ B.promotedTransactions cache) then buildFromMiningCache else do
                 existingStateDbStateRoot <- getStateRoot
-                time <- liftIO getCurrentTime
                 let lastSR          = B.lastExecutedStateRoot cache
                 let lastSHA         = B.bestBlockSHA cache
                 let lastHead        = B.bestBlockHeader cache
                 let promoted        = B.promotedTransactions cache
+                let time            = B.startTimestamp cache
                 let tempBlockHeader = buildNextBlockHeader lastHead lastSHA [] lastSR [] time
                 let remGas          = B.remainingGas cache
                 liftIO $ traceIO $ "pre-incremental run :: (" ++ show remGas ++ ", " ++ format lastSR ++ ")"
@@ -222,7 +224,6 @@ nextGasLimit g = g + q - (if d == 0 then 1 else 0) where (q,d) = g `quotRem` 102
 
 buildFromMiningCache :: MonadBagger m => m OutputBlock
 buildFromMiningCache = do
-    time <- liftIO $ getCurrentTime
     cache <- B.miningCache <$> getBaggerState
     let uncles       = []
     let parentHash   = B.bestBlockSHA cache
@@ -232,6 +233,7 @@ buildFromMiningCache = do
     let parentNum    = DD.blockDataNumber parentHeader
     let parentDiff   = DD.blockDataDifficulty parentHeader
     let parentTS     = DD.blockDataTimestamp parentHeader
+    let time         = B.startTimestamp cache
     let nextDiff     = BDB.nextDifficulty False parentNum parentDiff parentTS time
     previousStateRoot <- getStateRoot
     liftIO $ traceIO $ "pre-reward :: (" ++ format stateRoot ++ ")"
