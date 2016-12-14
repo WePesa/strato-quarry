@@ -70,9 +70,9 @@ class (Monad m, MonadIO m, HasHashDB m, HasStateDB m, HasMemAddressStateDB m) =>
         let newMiningCache = B.MiningCache { B.bestBlockSHA          = blockHash
                                            , B.bestBlockHeader       = bd
                                            , B.lastExecutedStateRoot = thisStateRoot
-                                           , B.lastExecutedTxs       = S.empty
                                            , B.remainingGas          = nextGasLimit $ DD.blockDataGasLimit bd
-                                           , B.promotedTransactions  = S.empty
+                                           , B.lastExecutedTxs       = []
+                                           , B.promotedTransactions  = []
                                            }
         putBaggerState $ state { B.miningCache = newMiningCache }
         setStateDBStateRoot thisStateRoot
@@ -86,30 +86,30 @@ class (Monad m, MonadIO m, HasHashDB m, HasStateDB m, HasMemAddressStateDB m) =>
         let seen'       = B.seen state
         let cache       = B.miningCache state
         let lastExec    = B.lastExecutedTxs cache
-        let lastExecLen = S.size lastExec
-        let noCachedTxsCulled = lastExecLen == length [t | t <- S.toList lastExec, otHash t `M.member` seen']
+        let lastExecLen = length lastExec
+        let noCachedTxsCulled = lastExecLen == length [t | t <- lastExec, otHash t `M.member` seen']
         if noCachedTxsCulled
-            then if (S.null $ B.promotedTransactions cache) then buildFromMiningCache else do
+            then if (null $ B.promotedTransactions cache) then buildFromMiningCache else do
                 existingStateDbStateRoot <- getStateRoot
                 time <- liftIO getCurrentTime
                 let lastSR          = B.lastExecutedStateRoot cache
                 let lastSHA         = B.bestBlockSHA cache
                 let lastHead        = B.bestBlockHeader cache
                 let promoted        = B.promotedTransactions cache
-                let promoted'       = S.toList promoted
                 let tempBlockHeader = buildNextBlockHeader lastHead lastSHA [] lastSR [] time
                 let remGas          = B.remainingGas cache
-                run <- runFromStateRoot lastSR remGas tempBlockHeader promoted'
+                liftIO $ traceIO $ "pre-incremental run :: (" ++ show remGas ++ ", " ++ format lastSR ++ ")"
+                run <- runFromStateRoot lastSR remGas tempBlockHeader promoted
                 case run of
                     Left e                         -> error $ show e
                     Right (newGas, newSR) -> do
-                        let unionLastExecAndPromoted = S.union lastExec promoted
+                        let unionLastExecAndPromoted = lastExec ++ promoted
                         let newMiningCache = cache { B.lastExecutedStateRoot = newSR
                                                    , B.remainingGas          = newGas
                                                    , B.lastExecutedTxs       = unionLastExecAndPromoted
-                                                   , B.promotedTransactions  = S.empty
+                                                   , B.promotedTransactions  = []
                                                    }
-                        liftIO $ traceIO $ "incremental run :: (" ++ show newGas ++ ", " ++ format newSR ++ ")"
+                        liftIO $ traceIO $ "post-incremental run :: (" ++ show newGas ++ ", " ++ format newSR ++ ")"
                         updateBaggerState (\s -> s { B.miningCache = newMiningCache })
                 setStateDBStateRoot existingStateDbStateRoot
                 buildFromMiningCache
@@ -228,13 +228,15 @@ buildFromMiningCache = do
     let parentHash   = B.bestBlockSHA cache
     let parentHeader = B.bestBlockHeader cache
     let stateRoot    = B.lastExecutedStateRoot cache
-    let txs          = S.toList $ B.lastExecutedTxs cache
+    let txs          = B.lastExecutedTxs cache
     let parentNum    = DD.blockDataNumber parentHeader
     let parentDiff   = DD.blockDataDifficulty parentHeader
     let parentTS     = DD.blockDataTimestamp parentHeader
     let nextDiff     = BDB.nextDifficulty False parentNum parentDiff parentTS time
     previousStateRoot <- getStateRoot
+    liftIO $ traceIO $ "pre-reward :: (" ++ format stateRoot ++ ")"
     rewardedStateRoot <- rewardCoinbases stateRoot ourCoinbase []
+    liftIO $ traceIO $ "post-reward :: (" ++ format rewardedStateRoot ++ ")"
     setStateDBStateRoot previousStateRoot
     return OutputBlock { obOrigin = TO.Quarry
                        , obTotalDifficulty = parentDiff + nextDiff

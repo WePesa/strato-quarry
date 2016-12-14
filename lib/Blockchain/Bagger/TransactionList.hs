@@ -48,7 +48,7 @@ trimAboveCost maxCost calcCost tl =
     let (tooHigh, justRight) = M.partitionWithKey (\_ v -> (calcCost v) > maxCost) tl in (M.elems tooHigh, justRight)
 
 popSequential :: Integer -> TransactionList -> ([OutputTx], TransactionList)
-popSequential nonce tl = (reverse popped, M.fromList kept)
+popSequential nonce tl = (popped, M.fromList kept)
     where (_, popped, kept) = foldl theFold initialFoldState (M.toAscList tl)
           initialFoldState  = (nonce - 1, [], [])
           theFold (lastNonce, popped', kept') e@(elemNonce, elemTx) =

@@ -20,8 +20,8 @@ data MiningCache = MiningCache { bestBlockSHA          :: SHA
                                , bestBlockHeader       :: DD.BlockData
                                , lastExecutedStateRoot :: StateRoot
                                , remainingGas          :: Integer
-                               , lastExecutedTxs       :: S.Set OutputTx
-                               , promotedTransactions  :: S.Set OutputTx
+                               , lastExecutedTxs       :: [OutputTx]
+                               , promotedTransactions  :: [OutputTx]
                                }
 
 data BaggerState = BaggerState { miningCache           :: MiningCache
@@ -46,8 +46,8 @@ defaultMiningCache  = MiningCache { bestBlockSHA          = SHA $ fromIntegral 0
                                   , bestBlockHeader       = error "dont taze me bro"
                                   , lastExecutedStateRoot = blankStateRoot
                                   , remainingGas          = 0
-                                  , lastExecutedTxs       = S.empty
-                                  , promotedTransactions  = S.empty
+                                  , lastExecutedTxs       = []
+                                  , promotedTransactions  = []
                                   }
 
 addToATL :: OutputTx -> ATL -> (Maybe OutputTx, ATL)
@@ -109,4 +109,4 @@ popAllPending s@BaggerState{pending = p} = (popped, s { pending = M.empty })
 
 addToPromotionCache :: OutputTx -> BaggerState -> BaggerState
 addToPromotionCache tx s@BaggerState{ miningCache = mc@MiningCache{ promotedTransactions = pt } } =
-    let newPT = S.insert tx pt in s { miningCache = mc { promotedTransactions = newPT } }
+    let newPT = tx:pt in s { miningCache = mc { promotedTransactions = newPT } }
