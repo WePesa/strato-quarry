@@ -37,11 +37,11 @@ import Debug.Trace (traceIO)
 data RunAttemptError = CantFindStateRoot | GasLimitReached [OutputTx] deriving Show
 
 class (Monad m, MonadIO m, HasHashDB m, HasStateDB m, HasMemAddressStateDB m) => MonadBagger m where
-    getBaggerState    :: m B.BaggerState
-    putBaggerState    :: B.BaggerState -> m ()
-    runFromStateRoot  :: StateRoot -> Integer -> DD.BlockData -> [OutputTx] -> m (Either RunAttemptError (Integer, StateRoot)) -- todo: should this be (StateRoot, [accepted_/rejected_txs])?
-    rewardCoinbases   :: StateRoot -> Address -> [Address] -> m StateRoot -- miner coinbase -> uncle coinbases -> stateRoot
-    {-# MINIMAL getBaggerState, putBaggerState, runFromStateRoot #-}
+    getBaggerState   :: m B.BaggerState
+    putBaggerState   :: B.BaggerState -> m ()
+    runFromStateRoot :: StateRoot -> Integer -> DD.BlockData -> [OutputTx] -> m (Either RunAttemptError (Integer, StateRoot)) -- todo: should this be (StateRoot, [accepted_/rejected_txs])?
+    rewardCoinbases  :: StateRoot -> Address -> [Address] -> m StateRoot -- miner coinbase -> uncle coinbases -> stateRoot
+    {-# MINIMAL getBaggerState, putBaggerState, runFromStateRoot, rewardCoinbases #-}
 
     updateBaggerState :: (B.BaggerState -> B.BaggerState) -> m ()
     updateBaggerState f = putBaggerState =<< (f <$> getBaggerState)
