@@ -187,7 +187,7 @@ three core actions:
 
 5. There is a `Map SHA OutputTx` called `seen` in the BaggerState as well. This is to accelerate the process of determining
    whether a transaction that was already executed and cached was "trumped" per #4 by a transaction which has yet to be
-   executed. Naively, we'd have to compare every cached transaction to every unran transaction, an O(n^2) operation to
+   executed. Naively, we'd have to compare every cached transaction to every unran transaction, an O(nm) operation to
    determine if it was trumped. Because Haskell's `Data.Map` is implemented as a binary tree, and trumped transactions get 
    removed from `seen`, this reduces the cost of the check to O(n log n). "Seen" is a bit of a misnomer, as it doesnt keep
    track of all transactions that were seen, but rather of transactions which are being managed by the pool. 
