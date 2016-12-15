@@ -3,6 +3,7 @@ module SQLMonad where
 
 import Blockchain.DB.SQLDB
 import Blockchain.EthConf
+import Blockchain.Output
 import Control.Monad.IO.Class
 import Control.Monad.Logger
 import Control.Monad.Trans.Reader
@@ -18,7 +19,7 @@ data SQLConns = SQLConns {
   persistPool :: ConnectionPool
   }
 
-type ConnT = ReaderT SQLConns (NoLoggingT (ResourceT (LoggingT IO)))
+type ConnT = ReaderT SQLConns (LoggingT (ResourceT (LoggingT IO)))
 
 instance HasSQLDB ConnT where
   getSQLDB = persistPool <$> ask
@@ -26,7 +27,7 @@ instance HasSQLDB ConnT where
 runConnT :: ConnT a -> LoggingT IO a
 runConnT conn =
   let cs = postgreSQLConnectionString $ sqlConfig ethConf
-  in runResourceT $ runNoLoggingT $ do
+  in runResourceT $ flip runLoggingT printLogMsg $ do
     (_, sConn) <- allocate (connectPostgreSQL cs) close
     -- 2 is important here so long as the addBlock hack is being used
     -- in BlockConstruction.hs
