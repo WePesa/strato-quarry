@@ -25,14 +25,14 @@
    block, and eliminates a potentially costly SQL query at the end of
    every VM loop.
 
-2. Now that we'd have a fast way to keep track of all eligible
+2. Now that we have a fast way to keep track of all eligible
    transactions to be mined, we can optimize the mining process to
    only run new incoming transactions on an "incremental" basis. The
    only time we have to re-run ALL pending transactions is if a new 
    chain head comes in, meaning we have to start mining from a new
    stateroot anyway, or if a transaction that we mined incrementally
    earlier gets trumped by another transaction from its original sender
-   the same nonce but a higher gas price. There's no real way to "undo"
+   with the same nonce but a higher gas price. There's no real way to "undo"
    a single transaction at an arbitrary point in the block as it may 
    influence balances/storages/behaviors of later transactions in the
    same block.
@@ -57,7 +57,7 @@
    requires the VM to implement a handful of necessary functions to
    store and retrieve the Bagger state, and execute certain operations 
    against a given StateRoot. These functions enable the Bagger MT to
-   add new functionality to the VM, allowing simple interface to be
+   add new functionality to the VM, allowing a simple interface to be
    used to work against the mempool and tx result cache.
 
 ## Implementation details
@@ -74,6 +74,7 @@ type SR  = StateRoot        -- A Merkle-Patricia state root, as used to access
                             -- the blockchain's state.
 type GL  = Integer          -- The remaining gas that can be used to execute TXs
                             -- in a given block
+type BH  = BlockData        -- A block header (Blockchain.Data.DataDefs.BlockData)
 type RAE = RunAttemptError  -- used by to report errors in running certain TXs
                             -- to the Bagger 
 ```
@@ -82,14 +83,14 @@ type RAE = RunAttemptError  -- used by to report errors in running certain TXs
 MonadBagger's minimal complete defintion consists of four functions that
 need to be implemented by the VM context to enable it to work.
 
-1. `getBaggerState   :: m BS` - provide access the Bagger's stateful information so that it may be used
+1. `getBaggerState   :: m BS` - provide access to the Bagger's stateful information so that it may be used
 
-2. `putBaggerState   :: BS -> m ()` - replace the Bagger's state with a new state.
+2. `putBaggerState   :: BS -> m ()` - replaces the base monad's BaggerState with a new one.
 
 3. `runFromStateRoot :: SR -> GL -> BH -> [TX] -> m (Either RAE (GL, SR))`
    While this seems like awfully complicated, it's actually not so bad. The arguments can be read as
-   "Given a starting stateroot, a gas limit, block header, and list of transactions, return
-   either an error, or a new gas limit and stateroot". We need to ability to run transactions from
+   "Given a starting stateroot, a gas limit, a block header, and list of transactions, return
+   either an error, or a new gas limit and stateroot". We need the ability to run transactions from
    an arbitrary stateroot as we may be running transactions "incrementally" from an intermediate SR,
    or from the SR of an new block that comes in which we deem the parent of the block we are trying to mine.
    Certain opcodes in the EVM require access to the block header of the block they will be in, so we need 
@@ -99,12 +100,12 @@ need to be implemented by the VM context to enable it to work.
    arguments passed in. Or, in the case of a successful run, a new gas limit (as TXs use gas to execute), and
    a new StateRoot (as TXs change the data the in the Merkle-Patricia DB)
 
-4. `rewardCoinbases` :: SR -> Address -> [Address] -> m SR`
-   Like `runFromStateRoot`, this modifies the MP state, and thus needs an SR to start from. It then takes
-   a single address, this is who gets the block reward for mining this block, and a list of addresses of
+4. `rewardCoinbases :: SR -> Address -> [Address] -> m SR`
+   Like `runFromStateRoot`, this modifies the MP state, and thus needs a StateRoot to start from. It then takes
+   a single address -- who gets the block reward for mining this block -- and a list of addresses of
    the miners of known uncles (so that they get rewarded for mining uncles), and returns a new SR. This
-   is used in the final stage of building blocks, as the reward has to be encoded in the SR field of
-   the final block header.
+   is used in the final stage of building blocks, as the reward has to be applied after all transactions to get
+   the final stateroot to put in the newly formed BH.
 
 Naturally, functions 1 and 2 are the minimal complete definition for a state monad, and all state monad laws apply
 to `getBaggerState` and `putBaggerState`. Functions 3 and 4 enable the Bagger to actually execute VM transactions 
@@ -140,26 +141,26 @@ three core actions:
     the State monad law guarantees are inherently derived from the fact that ContextM is itself transformed
     by a StateT.
 
-3. Implementation of `runFromStateRoot` simply wraps ContextM's existing `addTransactions` function
-   by setting specified StateRoot before executing the transactions.
+3. The implementation of `runFromStateRoot` simply wraps ContextM's existing `addTransactions` function
+   by setting specified the StateRoot before executing the transactions.
 
 4. Similarly `rewardCoinbases` simply sets the specified SR, applies the mining rewards requested, and
-   returns the "final" SR that the block will have as necessary to produce a valid block.
+   returns the "final" SR that the newly minted block will have.
 
 5. To avoid a circular module dependency between `ethereum-vm` and `strato-quarry`, the BaggerState record
    also holds a (pure) function that calculates the gas necessary to run a given TX. The `ethereum-vm` process
    should, upon startup, set that record to the function it has implemented (currently named `calculateIntrinsicGas'`
-   in `BlockChain.hs`
+   in `BlockChain.hs`) by using `setCalculateIntrinsicGas`
 
-6. Likewise, upon startup, the EVM should call `processNewBestBlock` with, at the very least, the SHA and header of
-   the genesis block so that the miner has some block header, stateroot, and gas limit to supply to `runFromStateRoot`
-   when making blocks. 
+6. Likewise, upon startup, the EVM should call `processNewBestBlock` with, at the very least, the SHA and BH of
+   the genesis block so that the miner has some block header (and thus stateroot), and gas limit to supply to
+   `runFromStateRoot` when creating blocks. 
 
 ## Nitty-gritty implementation details
 
 1. The Merkle-Patricia database implementation that we have is inherently stateful, thus all before any
-   stateroot-related calls, the Bagger will keep a copy of StateRoot that the MPDB was in prior to execution
-   and reset it to that value after. This is mostly motivated by paranoid reasons, but keeps the Bagger as
+   stateroot-related calls, the Bagger will keep a copy of StateRoot that the MPDB was in prior to execution of TXs
+   and reset it to that value after. This is mostly motivated by paranoia, but it also keeps the Bagger as
    "transparent" as possible to the VM.
 
 2. The BaggerState maintains two different set of transactions, which are implemented as
@@ -177,30 +178,32 @@ three core actions:
    it stands to reason that one would not send out a transaction they know they can't afford, and thus there is no
    reasonable expectation of a miner keeping the transaction until they can foot the bill.
 
-4. There is an edge case in which, for the same block, an account may send out multiple transactions with the same nonce.
-   Since neither of those transactions have been mined yet, they are all equally valid. In order to pick one to be mined,
-   the miner looks at the gas price the sender was willing to pay for either transaction. The transaction with the highest
-   gas price will get included in the block, as it will have a higher transaction fee and thus be more lucrative for the miner.
-   There is a possibility that due to network latency and other factors, a "better" transaction will be seen by the mempool
-   after a preceding one was incrementally mined. In that scenario, the existing block has to be re-mined from scratch, as
-   the two transactions may have different side effects.
+4. There is an edge case in which, for the same block, an account may send out multiple transactions with the same
+   nonce Since neither of those transactions have been mined yet, they are all equally valid. In order to pick one to be
+   mined, the miner looks at the gas price the sender was willing to pay for either transaction. The transaction with
+   the highest fee will get included in the block, as it will be more lucrative for the miner.
+   There is a possibility that due to network latency and other factors, a "better" transaction will be seen by the
+   mempool after a preceding one was incrementally mined. In that scenario, the existing block has to be re-mined from
+   scratch, as the two transactions may have different cascading effects on the blockchain.
 
-5. There is a `Map SHA OutputTx` called `seen` in the BaggerState as well. This is to accelerate the process of determining
-   whether a transaction that was already executed and cached was "trumped" per #4 by a transaction which has yet to be
-   executed. Naively, we'd have to compare every cached transaction to every unran transaction, an O(nm) operation to
-   determine if it was trumped. Because Haskell's `Data.Map` is implemented as a binary tree, and trumped transactions get 
-   removed from `seen`, this reduces the cost of the check to O(n log n). "Seen" is a bit of a misnomer, as it doesnt keep
-   track of all transactions that were seen, but rather of transactions which are being managed by the pool. 
+5. There is a `Map SHA OutputTx` called `seen` in the BaggerState as well. This is to accelerate the process of
+   determining whether a transaction that was already executed and cached was "trumped" per #4 by a transaction which
+   has yet to be executed. Naively, we'd have to compare every cached transaction to every unran transaction, an O(nm)
+   operation -- where `n = cachedTransactions` and `m = unminedTransactions` -- to determine if it was trumped. Because
+   Haskell's `Data.Map` is implemented as a binary tree, and trumped transactions get removed from `seen`, this reduces
+   the cost of the check to O(n log2 n). "Seen" is a bit of a misnomer, as it doesnt keep track of all transactions that
+   were seen, but rather of transactions which are being managed by the pool. 
 
-6. Lastly, there is a `miningCache` field in the `BaggerState` record type. This is used to keep track of what transactions were
-   executed in the currently pending block, and which have yet to be.
+6. Lastly, there is a `miningCache` field in the `BaggerState` record type. This is used to keep track of what
+   transactions were executed in the currently pending block, and which have yet to be.
 
-7. The fields in MiningCache are mostly self explanatory. `bestBlockSHA` and `bestBlockHeader` are the information of the block
-   which will be the parent of the block which is currently being mined. `lastExecutedStateRoot` and `remainingGas` are used to keep
-   track of the SR and GL of the block as its being built incrementally. `lastExecutedTxs` are all the transactions which have been 
-   executed and cached, and `promotedTxs` are transactions which have yet to be executed and cached. Lastly, `startTimestamp` is a quirk
-   of the fact that the timestamp of a block can have an effect on its final state, due to the `TIMESTAMP` opcode in the EVM. This needs
-   to be consistent at all times for a block that is being mined.
+7. The fields in MiningCache are mostly self explanatory. `bestBlockSHA` and `bestBlockHeader` are the information of
+   the block which will be the parent of the block which is currently being mined. `lastExecutedStateRoot` and
+   `remainingGas` are used to keep track of the SR and GL of the block as its being built incrementally.
+   `lastExecutedTxs` are all the transactions which have been executed and cached, and `promotedTxs` are transactions
+   which have yet to be executed and cached. Lastly, `startTimestamp` is a quirk of the fact that the timestamp of a
+   block can have an effect on its final state, due to the `TIMESTAMP` opcode in the EVM. This needs to be consistent at
+   all times for a block that is being mined.
 
-References:
+
 [1]: https://en.wikipedia.org/wiki/Bagger_288 "Wikipedia - Bagger 288" 
