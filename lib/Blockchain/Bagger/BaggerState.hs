@@ -3,7 +3,6 @@ module Blockchain.Bagger.BaggerState where
 import Control.Applicative (Alternative, empty)
 
 import qualified Data.Map.Strict as M
-import qualified Data.Set as S
 import Data.Time.Clock
 
 import Blockchain.Bagger.TransactionList
@@ -44,7 +43,7 @@ defaultBaggerState  = BaggerState { miningCache           = defaultMiningCache
                                   }
 
 defaultMiningCache :: MiningCache
-defaultMiningCache  = MiningCache { bestBlockSHA          = SHA $ fromIntegral 0
+defaultMiningCache  = MiningCache { bestBlockSHA          = SHA 0
                                   , bestBlockHeader       = error "dont taze me bro"
                                   , lastExecutedStateRoot = blankStateRoot
                                   , remainingGas          = 0
@@ -70,7 +69,11 @@ modifyATL f address atl = case (M.lookup address atl) of
 
 calculateIntrinsicTxFee :: BaggerState -> (OutputTx -> Integer)
 calculateIntrinsicTxFee bs@BaggerState{ miningCache = MiningCache{ bestBlockHeader = bh } } t@OutputTx{otBaseTx = bt} =
-    (TD.transactionGasPrice bt) * ((calculateIntrinsicGas bs) (DD.blockDataNumber bh + 1) t)
+    (TD.transactionGasPrice bt) * (calculateIntrinsicGasAtNextBlock bs t)
+
+calculateIntrinsicGasAtNextBlock :: BaggerState -> OutputTx -> Integer
+calculateIntrinsicGasAtNextBlock BaggerState{ miningCache = MiningCache{ bestBlockHeader = bh }, calculateIntrinsicGas = cig } t =
+    cig (DD.blockDataNumber bh + 1) t
 
 addToPending :: OutputTx -> BaggerState -> (Maybe OutputTx, BaggerState)
 addToPending t s@BaggerState{pending = p} = let (oldTx, newATL) = (addToATL t p) in (oldTx, s { pending = newATL })
@@ -108,7 +111,7 @@ popSequentialFromQueued a nonce s@BaggerState{queued = q} =
 
 popAllPending :: BaggerState -> ([OutputTx], BaggerState)
 popAllPending s@BaggerState{pending = p} = (popped, s { pending = M.empty })
-    where popped = concat $ map (toList . snd) $ M.toList p
+    where popped = concat $ map toList $ M.elems p
 
 addToPromotionCache :: OutputTx -> BaggerState -> BaggerState
 addToPromotionCache tx s@BaggerState{ miningCache = mc@MiningCache{ promotedTransactions = pt } } =

@@ -57,4 +57,4 @@ popSequential nonce tl = (popped, M.fromList kept)
                 else (lastNonce, popped', (e:kept'))
 
 toList :: TransactionList -> [OutputTx]
-toList = map snd . M.toList
+toList = M.elems
